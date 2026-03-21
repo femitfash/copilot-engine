@@ -1,8 +1,28 @@
 {
-  "name": "zt-copilot-engine",
+  "name": "copilot-engine",
   "version": "1.0.0",
-  "description": "ZeroTrusted AI Copilot backend — Claude-powered agentic loop with SSE streaming",
+  "description": "Reusable backend for building Claude-powered AI copilots with agentic tool use, SSE streaming, and action approval workflows",
   "main": "dist/index.js",
+  "author": "femitfash",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/femitfash/copilot-engine.git"
+  },
+  "homepage": "https://github.com/femitfash/copilot-engine#readme",
+  "bugs": {
+    "url": "https://github.com/femitfash/copilot-engine/issues"
+  },
+  "keywords": [
+    "copilot",
+    "claude",
+    "anthropic",
+    "ai",
+    "agentic",
+    "sse",
+    "streaming",
+    "tool-use"
+  ],
   "scripts": {
     "dev": "ts-node src/index.ts",
     "build": "tsc",

@@ -4,12 +4,14 @@ A reusable, project-agnostic backend for building Claude-powered AI copilots wit
 
 **Ships with:** agentic loop (up to 4 Claude iterations), READ/WRITE tool separation, word-by-word SSE streaming, auth middleware, and a pluggable project system — swap the system prompt, tools, and executor to adapt to any domain.
 
+> Includes a reference implementation (`projects/zerotrusted/`) showing a production integration with the [ZeroTrusted AI Governance platform](https://zerotrusted.ai) — 14 READ + 10 WRITE tools covering PII detection, compliance, health checks, and more. Use `projects/example/` as a starter template for your own project.
+
 ---
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/www-zerotrusted-ai/copilot-engine.git
+git clone https://github.com/femitfash/copilot-engine.git
 cd copilot-engine
 npm install
 cp .env.example .env
