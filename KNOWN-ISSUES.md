@@ -390,6 +390,132 @@ if (data.type === 'error') {
 
 ---
 
+## 14. CSRF Blocks Write Tool Execution
+
+**Symptom**: Copilot reads data fine, but approved write actions fail with `403: Missing CSRF token or origin header`.
+
+**Root Cause**: Many apps implement CSRF protection that requires an `Origin` or `Referer` header (or a CSRF token cookie+header pair). When copilot-engine's tool executor makes server-to-server API calls, no `Origin` header is set, so CSRF middleware rejects the request.
+
+**Fix**: Set the `Origin` header in the tool executor's `apiCall` function to match the target API's origin:
+
+```typescript
+const baseUrl = new URL(url);
+headers["Origin"] = baseUrl.origin;
+```
+
+For apps using double-submit CSRF cookies, you may also need to forward the CSRF cookie and set the `x-csrf-token` header.
+
+**Checklist**:
+- [ ] Tool executor sets `Origin` header on all API calls
+- [ ] CSRF cookie is forwarded if the app uses double-submit pattern
+- [ ] Test write tool execution after approval (not just read tools)
+
+---
+
+## 15. Cross-Origin Fetch Blocked — Browser Cannot Reach Copilot Engine
+
+**Symptom**: Copilot panel shows "Cannot reach the copilot engine" even though `curl http://localhost:3100/health` returns 200. The copilot-engine is running but the browser fetch fails.
+
+**Root Cause**: Even with CORS properly configured, some environments (corporate proxies, browser extensions, strict CSP) block cross-origin fetch from `localhost:3000` to `localhost:3100`. This is especially common in enterprise environments.
+
+**Fix**: Instead of making the browser call the copilot-engine directly, add a **same-origin proxy** in the host app's server. The browser calls `/api/copilot` on the same origin, and the server proxies to the copilot-engine.
+
+```typescript
+// In host app's Express server
+const COPILOT_ENGINE_URL = process.env.COPILOT_ENGINE_URL || "http://localhost:3100";
+
+app.post("/api/copilot", async (req, res) => {
+  try {
+    const upstream = await fetch(`${COPILOT_ENGINE_URL}/api/copilot`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(req.headers.cookie ? { Cookie: req.headers.cookie } : {}),
+      },
+      body: JSON.stringify(req.body),
+    });
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    const text = await upstream.text();
+    res.write(text);
+    res.end();
+  } catch {
+    res.status(502).json({ error: "Copilot engine is not reachable" });
+  }
+});
+
+// Same for /api/copilot/execute
+```
+
+Then set the frontend's copilot URL to empty string (same origin):
+```typescript
+const COPILOT_URL = import.meta.env.VITE_COPILOT_API_URL || "";
+```
+
+**Checklist**:
+- [ ] Add proxy routes in host app's server for `/api/copilot` and `/api/copilot/execute`
+- [ ] Frontend copilot URL defaults to same-origin (empty string)
+- [ ] Proxy forwards cookies for session-based auth
+- [ ] `COPILOT_ENGINE_URL` env var configurable
+
+---
+
+## 16. Node v24 ESM Resolution — SDK Packages Fail to Load
+
+**Symptom**: `Error [ERR_MODULE_NOT_FOUND]: Cannot find module '...internal/utils/uuid.mjs'` when starting the app with `tsx` on Node v24.
+
+**Root Cause**: Node v24's ESM resolver does not correctly follow the `exports` map in newer versions of `openai` (v6+) and `@anthropic-ai/sdk` (v0.70+) packages. The `client.mjs` file imports from `./internal/utils/uuid.mjs` but the package's `exports` field doesn't expose that path, and `tsx` can't resolve it.
+
+**Fix**: Pin to compatible versions:
+- `openai`: v4.x (e.g., `4.77.0`)
+- `@anthropic-ai/sdk`: v0.39.x
+
+Or use Node v22 LTS instead of v24.
+
+**Checklist**:
+- [ ] Check Node version (`node --version`) — if v24+, watch for ESM resolution issues
+- [ ] Pin SDK versions if using Node v24 with `tsx`
+
+---
+
+## 17. Windows — `listen ENOTSUP` on `0.0.0.0`
+
+**Symptom**: `Error: listen ENOTSUP: operation not supported on socket 0.0.0.0:PORT`
+
+**Root Cause**: Node v24 on Windows does not support `reusePort` and may fail to bind to `0.0.0.0` in some configurations.
+
+**Fix**: Bind to `127.0.0.1` instead of `0.0.0.0`, and remove `reusePort: true`:
+```typescript
+server.listen({ port, host: "127.0.0.1" }, () => { ... });
+```
+
+**Checklist**:
+- [ ] Server binds to `127.0.0.1` (not `0.0.0.0`) on Windows
+- [ ] No `reusePort` option on Windows
+
+---
+
+## 18. Welcome Layout — Centered Icon vs Chat Bubble
+
+**Symptom**: Generated copilot shows a centered sparkle icon with tabbed categories instead of the standard chat-bubble welcome with inline pill buttons.
+
+**Root Cause**: The COPILOT_SKILL.md previously described "prompt library with category tabs" which led Claude Code to generate a tab-based category layout with vertical text lists. This doesn't match the established ZeroTrusted.ai / FastGRC copilot design.
+
+**Fix**: Updated COPILOT_SKILL.md (March 2026) now specifies the exact chat-bubble welcome pattern. If your copilot was generated before this update, refactor the panel's empty state to use:
+- Bot avatar (left) + chat bubble with greeting
+- "Navigate" section with inline pill buttons
+- "Actions" section with inline pill buttons
+- "Or just type your question below."
+
+See the updated `COPILOT_SKILL.md` Step 3 "Welcome / Empty State Layout" section.
+
+**Checklist**:
+- [ ] Welcome state uses chat-bubble layout (not centered icon)
+- [ ] Prompts are inline pills (not tabbed categories with text lists)
+- [ ] Only 2 groups: Navigate + Actions
+
+---
+
 ## Deployment Verification Checklist
 
 Before deploying to any new environment:
@@ -409,3 +535,8 @@ Before deploying to any new environment:
 13. [ ] `ANTHROPIC_API_KEY` is set and valid
 14. [ ] Token/auth forwarding works with the host app's auth system
 15. [ ] SSE reader uses `response.text()` (not `ReadableStream` reader)
+16. [ ] CSRF: tool executor sets `Origin` header on API calls
+17. [ ] Write actions work after approval (not just reads)
+18. [ ] Same-origin proxy configured if cross-origin fetch is blocked
+19. [ ] Node version compatible (v22 LTS recommended; v24 has ESM issues)
+20. [ ] Welcome state uses chat-bubble layout with inline pill buttons
