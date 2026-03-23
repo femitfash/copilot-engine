@@ -1,6 +1,6 @@
 {
   "name": "copilot-engine",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Reusable backend for building Claude-powered AI copilots with agentic tool use, SSE streaming, and action approval workflows",
   "main": "dist/index.js",
   "author": "femitfash",
@@ -23,9 +23,13 @@
     "streaming",
     "tool-use"
   ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "dev": "ts-node src/index.ts",
     "build": "tsc",
+    "prestart": "npm run build",
     "start": "node dist/index.js"
   },
   "dependencies": {

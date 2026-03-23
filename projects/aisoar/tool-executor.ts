@@ -155,9 +155,27 @@ export async function executeWriteTool(
 
   switch (toolName) {
     case "create_profile": {
+      // Fill in all NOT NULL fields with defaults if not provided by the LLM
+      const profileData = {
+        name: input.name || "New Profile",
+        description: input.description || "",
+        systemName: (input.name as string) || "System",
+        systemVersion: "1.0",
+        organizationName: "Organization",
+        ownerName: "System Owner",
+        ownerTitle: "ISSO",
+        ownerEmail: "owner@org.local",
+        securityContactName: "Security Contact",
+        securityContactEmail: "security@org.local",
+        privacyContactName: "Privacy Contact",
+        privacyContactEmail: "privacy@org.local",
+        fipsImpactLevel: "High",
+        isActive: false,
+        ...input, // LLM-provided values override defaults
+      };
       return apiCall(
         `${base}/api/profiles`,
-        { method: "POST", body: JSON.stringify(input) },
+        { method: "POST", body: JSON.stringify(profileData) },
         cookies
       );
     }

@@ -1,9 +1,10 @@
 /**
  * Returns the API configuration from environment variables.
- * Each project should set these in .env to match their API endpoints.
+ * AISOAR project: single backend API at localhost:5000.
  */
 export function getConfig() {
   return {
+    aisoarApiUrl: process.env.AISOAR_API_URL || "http://localhost:5000",
     settingsApiUrl: process.env.SettingsApiUrl || "",
     healthCheckApiUrl: process.env.HealthCheckApiUrl || "",
     mlApiBaseUrl: process.env.MlAPINewBaseUrl || "",

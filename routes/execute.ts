@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { executeWriteTool } from "../projects/zerotrusted/tool-executor";
+import { executeWriteTool } from "../projects/aisoar/tool-executor";
 import { getConfig } from "../src/config";
 
 const router = Router();

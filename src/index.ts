@@ -1,6 +1,14 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+// Node version guard — native fetch requires Node v18+
+const [major] = process.versions.node.split(".").map(Number);
+if (major < 18) {
+  console.error(`\n❌  Copilot Engine requires Node.js v18+ (found v${process.versions.node})`);
+  console.error(`    Install: https://nodejs.org  or  run: nvm use 18\n`);
+  process.exit(1);
+}
+
 import express from "express";
 import cors from "cors";
 import { validateToken } from "./auth/validate-token";
@@ -38,7 +46,14 @@ app.get("/health", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`ZT Copilot Engine running on port ${PORT}`);
+  console.log(`
+╔══════════════════════════════════════════════╗
+║  ZT Copilot Engine — http://localhost:${PORT}   ║
+║  Keep this terminal running alongside your   ║
+║  frontend app.                               ║
+║  Health check: GET /health                   ║
+╚══════════════════════════════════════════════╝
+`);
 });
 
 export default app;

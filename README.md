@@ -31,6 +31,42 @@ curl -N -X POST http://localhost:3100/api/copilot \
 
 ---
 
+## Post-Installation
+
+> **Copilot Engine runs as a separate backend process.** It is NOT bundled into your frontend app.
+
+### What you need running at the same time
+
+| Process | Command | Port |
+|---------|---------|------|
+| Your frontend app | (your existing start command) | e.g. 4200 |
+| **Copilot Engine** | `npm run dev` in the copilot-engine directory | **3100** |
+
+### Common setup mistakes (and fixes)
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `ERR_CONNECTION_REFUSED` on POST /api/copilot | Engine server never started | Open a second terminal → `cd copilot-engine && npm run dev` |
+| `Cannot find module 'dist/index.js'` | TypeScript never compiled | Use `npm run dev` for dev (ts-node); `npm start` auto-builds via `prestart` |
+| `fetch is not defined` / 500 on execute | Node.js < v18 | Upgrade to Node v18+: `nvm use 18` or [nodejs.org](https://nodejs.org) |
+| Approve/reject buttons unstyled | SCSS nesting error in consuming app | See SCSS rules in [COPILOT_SKILL.md](./COPILOT_SKILL.md) Step 3 |
+| `SassError: "&" may only be used at beginning` | Invalid Sass nesting syntax | Use `&.pending { }` not `.pending & { }` — see [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) |
+
+### Requirements
+
+- **Node.js v18+** — native `fetch` is required (not polyfilled)
+- **`ANTHROPIC_API_KEY`** — set in `.env` (copy `.env.example` to get started)
+- **`ALLOWED_ORIGINS`** — must match your frontend's dev server URL exactly (e.g. `http://localhost:4200`)
+
+### One-command setup
+
+```bash
+bash tools/dev.sh
+# Checks Node version, copies .env, installs deps, starts server
+```
+
+---
+
 ## Architecture
 
 ```

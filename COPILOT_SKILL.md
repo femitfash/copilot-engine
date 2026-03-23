@@ -26,6 +26,8 @@ cd copilot-engine && npm install
 cp .env.example .env
 ```
 
+Confirm `src/index.ts` (or the server entry point) has `import 'dotenv/config'` as its **first line** — before any other imports that read `process.env`. If it doesn't, add it.
+
 Read the app's codebase to understand:
 1. What APIs does this app call? (search for HTTP services, API endpoints, base URLs)
 2. What auth system does it use? (cookies, localStorage, tokens — search for `Authorization`, `Bearer`, `loginToken`)
@@ -53,16 +55,19 @@ Create `copilot-engine/projects/{app-name}/` with three files:
 - Forward the user's auth token to the app's APIs
 - Set `Origin` header on all requests to pass CSRF checks
 - For WRITE tools: cross-reference the app's database schema for NOT NULL columns and fill in sensible defaults for any required fields not in the tool's `input_schema`
+- **Required:** Truncate every tool result to **8KB max** before returning it — serialize to JSON, then if `result.length > 8192` slice it and append `" ... (truncated)"`. This prevents token overflow on large API responses.
 - Use `projects/example/tool-executor.ts` as a template
 
 Then update `copilot-engine/routes/copilot.ts` and `routes/execute.ts` imports to point to your new project instead of `zerotrusted`.
+
+**Required for SSE:** In `routes/copilot.ts`, immediately after setting SSE response headers, call `res.flushHeaders()` and send one empty keep-alive event (`res.write('data: \n\n')`) before the first real chunk. Without this, the connection silently times out before any tokens stream.
 
 Update `copilot-engine/src/config.ts` to include your app's API URL environment variables.
 
 Update `copilot-engine/.env` with:
 - `ANTHROPIC_API_KEY`
 - Your app's API URLs
-- `ALLOWED_ORIGINS` with your app's dev server URL
+- `ALLOWED_ORIGINS` must exactly match your app's dev server URL (e.g., `http://localhost:4200`) — wildcards will fail for credentialed requests
 - `PORT=3100`
 
 ### Step 3: Scaffold Frontend Files
@@ -182,11 +187,41 @@ Create 4 components:
   - **Message list**: scrollable area showing conversation messages
   - **Welcome state**: chat-bubble welcome with inline Navigate/Actions pill buttons (see layout above)
   - **Input area**: text input + send button at bottom
-- `copilot-message` — Message bubble with markdown rendering and `[suggest:]`/`[navigate:]` button parsing. CRITICAL: extract tokens BEFORE HTML escaping, then restore after. Watch for content changes during streaming (use `ngDoCheck` in Angular, `useEffect`/`useMemo` in React, `watch` in Vue).
+- `copilot-message` — Message bubble with markdown rendering and `[suggest:]`/`[navigate:]` button parsing. CRITICAL: extract tokens BEFORE HTML escaping, then restore after. Watch for content changes during streaming (use `ngDoCheck` in Angular, `useEffect`/`useMemo` in React, `watch` in Vue). **Required:** When displaying errors, handle both formats — `typeof err === 'string' ? err : err.message` — otherwise `[object Object]` is shown to the user.
 - `copilot-action-card` — Approve/reject card for write tool actions. Three states: pending (amber/warning), executed (green/success), rejected (red/error). After successful execution, the card MUST:
   1. **Auto-navigate** to the relevant page so the user can see what was created (map tool names to routes)
   2. **Invalidate the data cache** (React Query, Angular HttpClient cache, etc.) for the affected endpoints so the page shows fresh data without a hard refresh
-- `copilot-thinking` — Animated thinking indicator with bouncing dots and rotating domain-specific phrases.
+- `copilot-thinking` — Animated thinking indicator with bouncing dots and rotating domain-specific phrases. **Required:** While the thinking indicator is visible, hide any message with `isStreaming: true` and empty content — rendering both simultaneously causes a duplicate bot avatar.
+
+### SCSS Rules (Angular — applies to all components)
+
+> ⚠️ **Common cause of build failures and unstyled buttons.** Follow these exactly.
+
+**Valid BEM nesting:**
+```scss
+.action-card {
+  &__actions { ... }         // ✅ element at block root
+  &.pending { ... }          // ✅ modifier at block root
+  &.pending &__icon { ... }  // ✅ element scoped to modifier — valid
+}
+```
+
+**Invalid patterns (will cause SassError or wrong selector):**
+```scss
+.action-card {
+  &__actions {
+    .btn-approve { ... }   // ❌ place .btn-approve at block root, not inside &__actions
+  }
+  &.pending {
+    &__icon { ... }        // ❌ nested &__icon inside modifier block — invalid in Sass pre-dart
+  }
+}
+.pending & { ... }         // ❌ & after another selector — always invalid
+```
+
+**Rule:** Place button rules (`.btn-approve`, `.btn-reject`) and modifier-scoped rules at the block root level, not nested inside element blocks.
+
+---
 
 ### Step 4: Dark Mode
 
@@ -238,16 +273,13 @@ grep -r "--header-bg\|--dropdown-bg" src/
 
 ## Known Issues Reference
 
-Read `KNOWN-ISSUES.md` in the copilot-engine repo. Key pitfalls:
+The common pitfalls are covered inline in the steps above. For environment-specific edge cases:
 
-| Issue | Prevention |
-|-------|------------|
-| Token overflow (223K+) | Truncate tool results to 8KB max |
-| SSE stream cuts off | Use `response.text()` not ReadableStream |
-| Dark mode invisible | Angular: use `[class.copilot-dark]` not `:host-context()`. React/Vue: use theme context. |
-| Grey text in dark mode | Explicit color overrides for all text elements in dark mode |
-| Buttons not clickable | Extract `[suggest:]` tokens BEFORE `escapeHtml()` |
-| Covers host menus | Panel z-index: 10, below host dropdowns (z-index: 20+) |
-| Error shows raw JSON | Parse error as string OR object |
-| Duplicate thinking avatar | Hide empty streaming message while thinking indicator is visible |
-| Welcome layout wrong | Use chat-bubble welcome with inline pills — NOT centered icon + tabbed categories |
+| Issue | When to check |
+|-------|---------------|
+| Cross-origin fetch blocked | App and copilot-engine on different origins — implement a same-origin proxy in the host app |
+| Node v24 ESM resolution errors | Pin `openai` v4.x and `@anthropic-ai/sdk` v0.39.x |
+| Windows `ENOTSUP` on startup | Bind to `127.0.0.1` instead of `0.0.0.0` in `src/index.ts` |
+| Database not found on first run | Run `prisma migrate dev` or `prisma db push` before starting |
+
+See `known-issues.md` for the full deployment verification checklist (26 items) before going live.

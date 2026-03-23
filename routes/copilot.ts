@@ -2,14 +2,14 @@ import { Router, Request, Response } from "express";
 import { runAgenticLoop } from "../src/engine/agentic-loop";
 import { streamWords, sendDone, sendError } from "../src/engine/sse-stream";
 import {
-  ZT_SYSTEM_PROMPT,
+  AISOAR_SYSTEM_PROMPT,
   getResponseModeInstruction,
-} from "../projects/zerotrusted/system-prompt";
+} from "../projects/aisoar/system-prompt";
 import {
   ALL_TOOLS,
   WRITE_TOOL_NAMES,
-} from "../projects/zerotrusted/tools";
-import { executeReadTool } from "../projects/zerotrusted/tool-executor";
+} from "../projects/aisoar/tools";
+import { executeReadTool } from "../projects/aisoar/tool-executor";
 import { getConfig } from "../src/config";
 
 const router = Router();
@@ -44,7 +44,7 @@ router.post("/api/copilot", async (req: Request, res: Response) => {
       ? `\n\n## CURRENT CONTEXT\n${contextJson.substring(0, 2000)}`
       : "";
     const modeInstruction = getResponseModeInstruction(responseMode);
-    const fullPrompt = ZT_SYSTEM_PROMPT + contextBlock + modeInstruction;
+    const fullPrompt = AISOAR_SYSTEM_PROMPT + contextBlock + modeInstruction;
 
     const config = getConfig();
     const ctx = { userToken, config };

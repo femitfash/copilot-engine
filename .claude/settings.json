@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --version)",
+      "Bash(npm run build)",
+      "Bash(npm run dev*)",
+      "Bash(npm install)",
+      "Bash(curl http://localhost:3100/*)",
+      "Bash(cp .env.example .env)",
+      "Bash(ls dist*)",
+      "Bash(ls node_modules*)"
+    ]
+  }
+}

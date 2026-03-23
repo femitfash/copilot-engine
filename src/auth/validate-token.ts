@@ -1,9 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 
 /**
- * Express middleware that extracts the Bearer token from the Authorization header.
- * The token is forwarded to ZT APIs which handle their own validation.
- * Future enhancement: add jwks-rsa validation against Azure AD tenant.
+ * Express middleware that extracts auth credentials.
+ * Supports both:
+ * - Bearer token (Authorization header) — for token-based apps
+ * - Session cookies — for cookie-based apps like AISOAR
+ *
+ * The extracted credential is attached as req.userToken for downstream use.
  */
 export function validateToken(
   req: Request,
@@ -12,19 +15,31 @@ export function validateToken(
 ): void {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing or invalid Authorization header" });
+  // Option 1: Bearer token
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.replace("Bearer ", "");
+    if (token && token.trim() !== "") {
+      (req as any).userToken = token;
+      next();
+      return;
+    }
+  }
+
+  // Option 2: Forward cookies (for session-based apps like AISOAR)
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    (req as any).userToken = cookieHeader;
+    next();
     return;
   }
 
-  const token = authHeader.replace("Bearer ", "");
-
-  if (!token || token.trim() === "") {
-    res.status(401).json({ error: "Empty token" });
+  // Option 3: Custom header for copilot auth bypass in dev
+  const copilotAuth = req.headers["x-copilot-auth"];
+  if (copilotAuth) {
+    (req as any).userToken = copilotAuth as string;
+    next();
     return;
   }
 
-  // Attach token to request for downstream use
-  (req as any).userToken = token;
-  next();
+  res.status(401).json({ error: "Missing or invalid Authorization header" });
 }
