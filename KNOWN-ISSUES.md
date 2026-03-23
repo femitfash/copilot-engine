@@ -516,6 +516,136 @@ See the updated `COPILOT_SKILL.md` Step 3 "Welcome / Empty State Layout" section
 
 ---
 
+## 19. Write Tool Fails — Missing Required DB Fields
+
+**Symptom**: Approved write action returns `500: Failed to create [resource]`. Copilot shows "Executed" but nothing was actually created.
+
+**Root Cause**: The LLM provides only the fields defined in the tool's `input_schema` (e.g., `name`, `type`, `description`), but the host app's database schema has additional NOT NULL columns that aren't in the tool definition (e.g., `fipsImpactLevel`, `organizationName`, `ownerEmail`).
+
+**Fix**: In the tool executor's write handlers, fill in sensible defaults for all NOT NULL fields before calling the API:
+
+```typescript
+case "create_profile": {
+  const profileData = {
+    // Defaults for required fields
+    systemName: input.name || "System",
+    systemVersion: "1.0",
+    organizationName: "Organization",
+    ownerName: "System Owner",
+    fipsImpactLevel: "High",
+    // ... all other NOT NULL fields ...
+    ...input, // LLM-provided values override defaults
+  };
+  return apiCall(url, { method: "POST", body: JSON.stringify(profileData) }, cookies);
+}
+```
+
+**Prevention**: When defining WRITE tools in `tools.ts`, cross-reference the host app's database schema (`schema.ts`) to identify all NOT NULL columns. Either:
+1. Add them to the tool's `input_schema` so the LLM provides them, OR
+2. Fill defaults in the tool executor
+
+**Checklist**:
+- [ ] Cross-reference tool `input_schema` with DB schema for NOT NULL columns
+- [ ] Tool executor fills defaults for any NOT NULL fields not in the tool schema
+- [ ] Test each write tool end-to-end (approve → verify in DB)
+
+---
+
+## 20. Post-Action — No Navigation or Stale Cache
+
+**Symptom**: After approving a write action, the user has no way to see what was created. If they manually navigate to the page, data doesn't appear until a hard refresh.
+
+**Root Cause**: Two issues:
+1. The copilot doesn't auto-navigate to the relevant page after action execution
+2. The host app's data-fetching layer (e.g., React Query, Angular HttpClient cache) still holds stale data
+
+**Fix**:
+
+**Auto-navigation**: Map tool names to routes and navigate after execution:
+```typescript
+const TOOL_ROUTES = {
+  create_profile: "/profiles",
+  create_poam_item: "/poam",
+  // ...
+};
+
+// After successful execution:
+const route = TOOL_ROUTES[action.name];
+if (route) setTimeout(() => navigate(route), 600);
+```
+
+**Cache invalidation**: Invalidate the relevant query cache keys:
+```typescript
+const TOOL_QUERY_KEYS = {
+  create_profile: ["/api/profiles"],
+  create_poam_item: ["/api/poam-items"],
+  // ...
+};
+
+// After successful execution:
+for (const key of TOOL_QUERY_KEYS[action.name] || []) {
+  queryClient.invalidateQueries({ queryKey: [key] });
+}
+```
+
+**Also update the system prompt** to instruct the LLM to include `[navigate:]` buttons in its response after write actions are queued.
+
+**Checklist**:
+- [ ] Action card auto-navigates to relevant page after execution
+- [ ] Query cache invalidated for affected endpoints
+- [ ] System prompt includes post-action navigation mapping
+- [ ] Brief delay (500-800ms) before navigation so user sees "Executed" state
+
+---
+
+## 21. Host App Missing `dotenv` — `.env` File Not Loaded
+
+**Symptom**: App crashes with `DATABASE_URL must be set` even though `.env` file exists in the project root.
+
+**Root Cause**: The host app doesn't have `dotenv` installed or configured. The `.env` file exists but Node.js doesn't load it automatically.
+
+**Fix**: Install dotenv and import it at the top of the server entry point:
+```bash
+npm install dotenv
+```
+```typescript
+// First line of server/index.ts (or main.ts)
+import "dotenv/config";
+```
+
+**Checklist**:
+- [ ] `dotenv` is in dependencies
+- [ ] `import "dotenv/config"` is the first import in server entry point
+- [ ] `.env` file exists with required variables (DATABASE_URL, SESSION_SECRET, etc.)
+
+---
+
+## 22. Database Not Provisioned
+
+**Symptom**: App starts but all API calls return 500 errors. Console shows `FATAL: database "X" does not exist` (code 3D000).
+
+**Root Cause**: The database referenced in `DATABASE_URL` hasn't been created yet. The app expects the database to already exist before running schema migrations.
+
+**Fix**:
+1. Create the database:
+   ```bash
+   psql -U postgres -c "CREATE DATABASE myapp;"
+   ```
+   Or via PgAdmin4: Right-click Databases → Create → Database
+
+2. Push the schema:
+   ```bash
+   npx drizzle-kit push
+   ```
+
+**Checklist**:
+- [ ] Database exists in PostgreSQL (verify with `\l` in psql)
+- [ ] `DATABASE_URL` in `.env` points to the correct host, port, and database name
+- [ ] Schema has been pushed (`npx drizzle-kit push`)
+- [ ] Tables exist (verify with `\dt` in psql)
+
+---
+
 ## Deployment Verification Checklist
 
 Before deploying to any new environment:
@@ -540,3 +670,9 @@ Before deploying to any new environment:
 18. [ ] Same-origin proxy configured if cross-origin fetch is blocked
 19. [ ] Node version compatible (v22 LTS recommended; v24 has ESM issues)
 20. [ ] Welcome state uses chat-bubble layout with inline pill buttons
+21. [ ] Write tool schemas cross-referenced with DB NOT NULL columns
+22. [ ] Each write tool tested end-to-end (approve → verify in DB/UI)
+23. [ ] Auto-navigation wired for post-action UX
+24. [ ] Query cache invalidation wired for post-action data freshness
+25. [ ] `dotenv` installed and imported in server entry point
+26. [ ] Database created and schema pushed before first run

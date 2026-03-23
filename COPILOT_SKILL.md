@@ -51,6 +51,8 @@ Create `copilot-engine/projects/{app-name}/` with three files:
 
 **tool-executor.ts** — Map tool names to API calls:
 - Forward the user's auth token to the app's APIs
+- Set `Origin` header on all requests to pass CSRF checks
+- For WRITE tools: cross-reference the app's database schema for NOT NULL columns and fill in sensible defaults for any required fields not in the tool's `input_schema`
 - Use `projects/example/tool-executor.ts` as a template
 
 Then update `copilot-engine/routes/copilot.ts` and `routes/execute.ts` imports to point to your new project instead of `zerotrusted`.
@@ -181,7 +183,9 @@ Create 4 components:
   - **Welcome state**: chat-bubble welcome with inline Navigate/Actions pill buttons (see layout above)
   - **Input area**: text input + send button at bottom
 - `copilot-message` — Message bubble with markdown rendering and `[suggest:]`/`[navigate:]` button parsing. CRITICAL: extract tokens BEFORE HTML escaping, then restore after. Watch for content changes during streaming (use `ngDoCheck` in Angular, `useEffect`/`useMemo` in React, `watch` in Vue).
-- `copilot-action-card` — Approve/reject card for write tool actions. Three states: pending (amber/warning), executed (green/success), rejected (red/error).
+- `copilot-action-card` — Approve/reject card for write tool actions. Three states: pending (amber/warning), executed (green/success), rejected (red/error). After successful execution, the card MUST:
+  1. **Auto-navigate** to the relevant page so the user can see what was created (map tool names to routes)
+  2. **Invalidate the data cache** (React Query, Angular HttpClient cache, etc.) for the affected endpoints so the page shows fresh data without a hard refresh
 - `copilot-thinking` — Animated thinking indicator with bouncing dots and rotating domain-specific phrases.
 
 ### Step 4: Dark Mode
