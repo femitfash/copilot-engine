@@ -10,8 +10,24 @@ A reusable, project-agnostic backend for building Claude-powered AI copilots wit
 
 ## Quick Start
 
+### Option A — Claude Code (recommended, 2 steps)
+
+From your project directory, paste these two prompts into Claude Code:
+
+> **Prompt 1:** Copy COPILOT_SKILL.md from the repo (https://github.com/femitfash/copilot-engine) into this project's .claude/skills/add-copilot.md. Create directories if missing.
+
+> **Prompt 2:** Add an AI copilot to this application using the skill in .claude/skills/add-copilot.md
+
+Claude Code will fork the repo, clone it, create your backend project, scaffold frontend components, and wire everything together.
+
+After integration, run `/qa-integration` from Claude Code to verify everything works end-to-end.
+
+**Prerequisite:** [GitHub CLI](https://cli.github.com/) (`gh`) must be installed and authenticated.
+
+### Option B — Manual setup
+
 ```bash
-git clone https://github.com/femitfash/copilot-engine.git
+gh repo fork femitfash/copilot-engine --clone
 cd copilot-engine
 npm install
 cp .env.example .env

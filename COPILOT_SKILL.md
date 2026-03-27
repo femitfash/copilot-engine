@@ -15,15 +15,31 @@ You are integrating an AI Copilot into this application using the copilot-engine
 - This application uses a modern frontend framework (Angular 14+, React 16+, Vue 3+, or similar)
 - The developer has an `ANTHROPIC_API_KEY`
 - The copilot-engine repo is at: https://github.com/femitfash/copilot-engine
+- GitHub CLI (`gh`) must be installed and authenticated (`gh auth status`)
 
-### Step 1: Clone and Set Up copilot-engine
+### Step 1: Fork, Clone, and Set Up copilot-engine
 
-Clone the copilot-engine repo as a sibling directory (NOT inside the app repo):
+Each application gets its own fork — this ensures one-to-one isolation and lets you customize tools, prompts, and executors independently.
+
+1. Fork the upstream repo:
 
 ```bash
-cd .. && git clone https://github.com/femitfash/copilot-engine.git
+gh repo fork femitfash/copilot-engine --clone=false
+```
+
+2. Clone YOUR fork as a sibling directory (NOT inside the app repo):
+
+```bash
+GITHUB_USER=$(gh api user --jq .login)
+cd .. && git clone "https://github.com/$GITHUB_USER/copilot-engine.git"
 cd copilot-engine && npm install
 cp .env.example .env
+```
+
+3. Set upstream remote for future engine updates:
+
+```bash
+git remote add upstream https://github.com/femitfash/copilot-engine.git
 ```
 
 Confirm `src/index.ts` (or the server entry point) has `import 'dotenv/config'` as its **first line** — before any other imports that read `process.env`. If it doesn't, add it.

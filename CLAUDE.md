@@ -53,6 +53,7 @@ Key entry points:
 | `bash tools/test.sh` | Run test suite |
 
 **QA Agent:** `/qa` — Run self-healing QA agent (checks build, env, server, API)
+**Integration QA:** `/qa-integration` — Post-integration QA for copilot-engine + target app (tests both servers, diagnoses and fixes issues)
 
 ---
 
