@@ -138,6 +138,47 @@ export async function executeReadTool(
       return apiCall(`${base}/api/admin/dashboard`, { method: "GET" }, cookies);
     }
 
+    case "get_fraud_alerts": {
+      return apiCall(`${base}/api/fraud/alerts`, { method: "GET" }, cookies);
+    }
+
+    case "get_fraud_scanner_configs": {
+      return apiCall(`${base}/api/fraud/scanner-configs`, { method: "GET" }, cookies);
+    }
+
+    case "get_fraud_feedback_runs": {
+      const configId = input.configId as string;
+      const limit = input.limit || 10;
+      return apiCall(
+        `${base}/api/fraud/feedback/runs/${configId}?limit=${limit}`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
+    case "get_fraud_scan_logs": {
+      const configId = input.configId as string;
+      const limit = input.limit || 20;
+      return apiCall(
+        `${base}/api/fraud/scanner/logs/${configId}?limit=${limit}`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
+    case "get_transaction_feedback": {
+      const txnId = input.transactionId as string;
+      return apiCall(
+        `${base}/api/fraud/alert-feedback?transactionId=${encodeURIComponent(txnId)}`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
+    case "get_fraud_rule_effectiveness": {
+      return apiCall(`${base}/api/fraud/alert-feedback/stats`, { method: "GET" }, cookies);
+    }
+
     default:
       return JSON.stringify({ error: `Unknown tool: ${toolName}` });
   }
@@ -249,6 +290,77 @@ export async function executeWriteTool(
       return apiCall(
         `${base}/api/threat-intel/connect`,
         { method: "POST", body: JSON.stringify(input) },
+        cookies
+      );
+    }
+
+    case "create_fraud_scanner_config": {
+      const configData = {
+        scannerId: "blue-team-scanner-v1",
+        scanSchedule: "hourly",
+        riskThreshold: 40,
+        batchSize: 50,
+        isEnabled: true,
+        bankApiBaseUrl: "http://localhost:3030",
+        bankApiKey: "fraud-sim-key-2026",
+        ...input,
+      };
+      return apiCall(
+        `${base}/api/fraud/scanner-configs`,
+        { method: "POST", body: JSON.stringify(configData) },
+        cookies
+      );
+    }
+
+    case "run_fraud_feedback": {
+      const configId = input.configId as string;
+      return apiCall(
+        `${base}/api/fraud/feedback/run/${configId}`,
+        { method: "POST", body: JSON.stringify({}) },
+        cookies
+      );
+    }
+
+    case "run_fraud_scan": {
+      const configId = input.configId as string;
+      return apiCall(
+        `${base}/api/fraud/scanner/run/${configId}`,
+        { method: "POST", body: JSON.stringify({}) },
+        cookies
+      );
+    }
+
+    case "submit_alert_feedback": {
+      return apiCall(
+        `${base}/api/fraud/alert-feedback`,
+        { method: "POST", body: JSON.stringify(input) },
+        cookies
+      );
+    }
+
+    case "create_rule_from_feedback": {
+      const { transactionId, ruleDescription, category, riskScoreImpact } = input;
+      // Create a rule directly via the rules endpoint
+      return apiCall(
+        `${base}/api/fraud/rules`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ruleId: `ANALYST-${Date.now()}`,
+            name: `[Analyst] ${(ruleDescription as string).slice(0, 80)}`,
+            description: ruleDescription,
+            category: category || "behavioral",
+            action: "alert",
+            riskScoreImpact: riskScoreImpact || 50,
+            priority: 70,
+            isEnabled: true,
+            conditions: {
+              source: "analyst_feedback",
+              sourceTransactionId: transactionId,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        },
         cookies
       );
     }
