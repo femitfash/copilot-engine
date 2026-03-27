@@ -7,8 +7,8 @@
 
 ## Project Overview
 
-Copilot Engine is a reusable Express backend for building Claude-powered AI copilots. It handles:
-- Agentic tool-use loop (Claude calls READ tools immediately; WRITE tools are queued for user approval)
+Copilot Engine is a reusable, LLM-agnostic Express backend for building AI copilots. Supports Anthropic Claude and OpenAI GPT (including gpt-4.1-mini). It handles:
+- Agentic tool-use loop (LLM calls READ tools immediately; WRITE tools are queued for user approval)
 - SSE streaming (word-by-word at ~40 words/sec)
 - Auth middleware (bearer token, session cookies, or dev header)
 - Pluggable project system (swap `projects/` directory for a different domain)
@@ -25,7 +25,8 @@ Key entry points:
 - `src/index.ts` — Express app, CORS, auth middleware, route mounting
 - `routes/copilot.ts` — POST /api/copilot (SSE chat)
 - `routes/execute.ts` — POST /api/copilot/execute (action approval)
-- `src/engine/agentic-loop.ts` — Claude API loop with tool routing
+- `src/engine/agentic-loop.ts` — LLM-agnostic agentic loop with tool routing
+- `src/engine/providers/` — LLM provider adapters (Anthropic, OpenAI)
 - `src/engine/sse-stream.ts` — SSE helpers (streamWords, sendDone, sendError)
 - `projects/aisoar/` — AISOAR platform implementation (system-prompt, tools, tool-executor)
 
@@ -36,7 +37,7 @@ Key entry points:
 - **Runtime**: Node.js ≥ 18.0.0 (native fetch required)
 - **Language**: TypeScript (strict mode)
 - **Framework**: Express 4
-- **AI**: @anthropic-ai/sdk — model `claude-sonnet-4-20250514`
+- **AI**: LLM-agnostic — @anthropic-ai/sdk + openai SDK. Default: Anthropic `claude-sonnet-4-20250514`. Set `LLM_PROVIDER=openai` + `OPENAI_API_KEY` for GPT models.
 - **Streaming**: Server-Sent Events (SSE)
 - **Auth**: Bearer token / session cookies / x-copilot-auth dev header
 
@@ -79,7 +80,12 @@ copilot-engine/
 │   ├── auth/
 │   │   └── validate-token.ts # Auth middleware
 │   └── engine/
-│       ├── agentic-loop.ts   # Claude API loop
+│       ├── agentic-loop.ts   # LLM-agnostic agentic loop
+│       ├── llm-types.ts      # Provider-agnostic types (Tool, Message, LLMProvider)
+│       ├── providers/        # LLM adapters
+│       │   ├── index.ts      # getLLMConfig(), createProvider()
+│       │   ├── anthropic.ts  # Anthropic Claude adapter
+│       │   └── openai.ts     # OpenAI GPT adapter
 │       └── sse-stream.ts     # SSE streaming helpers
 ├── routes/
 │   ├── copilot.ts            # POST /api/copilot

@@ -1,8 +1,13 @@
 # Add AI Copilot to Your Application
 
-This is a Claude Code skill file. Copy it to your project's `.claude/skills/add-copilot.md` or paste it directly as a prompt to Claude Code.
+This is a Claude Code skill file. To use it, paste this single prompt into Claude Code from your project directory:
 
-It will automatically: clone copilot-engine, create your backend project, scaffold frontend components, wire everything into your app layout, configure dark mode, and handle all known pitfalls.
+> Add an AI copilot to this application using the skill at https://github.com/femitfash/copilot-engine/blob/master/COPILOT_SKILL.md
+
+Claude Code will fetch this file, save it locally, and follow the steps below.
+
+Alternatively, copy this file manually to your project's `.claude/skills/add-copilot.md` and run:
+> Add an AI copilot to this application using the skill in .claude/skills/add-copilot.md
 
 ---
 
@@ -10,12 +15,38 @@ It will automatically: clone copilot-engine, create your backend project, scaffo
 
 You are integrating an AI Copilot into this application using the copilot-engine framework. Follow these steps exactly.
 
-### Prerequisites
+### Step 0: Pre-Flight Checks
 
-- This application uses a modern frontend framework (Angular 14+, React 16+, Vue 3+, or similar)
-- The developer has an `ANTHROPIC_API_KEY`
-- The copilot-engine repo is at: https://github.com/femitfash/copilot-engine
-- GitHub CLI (`gh`) must be installed and authenticated (`gh auth status`)
+Before doing any work, verify these prerequisites. If any fail, stop and report the issue.
+
+```bash
+# 1. Node.js >= 18 (required for native fetch)
+node --version
+
+# 2. GitHub CLI installed and authenticated
+gh auth status
+
+# 3. npm available
+npm --version
+```
+
+- If Node < 18: stop and tell the developer to install Node 18+ from https://nodejs.org
+- If `gh` not found: stop and tell the developer to install GitHub CLI from https://cli.github.com/
+- If `gh auth status` fails: stop and tell the developer to run `gh auth login`
+- Confirm the app uses a modern frontend framework (Angular 14+, React 16+, Vue 3+, or similar) by checking `package.json`
+
+### LLM Provider Setup
+
+copilot-engine supports multiple LLM providers. Ask the developer which they want to use:
+
+| Provider | Default Model | Env Variable | Cost |
+|----------|--------------|--------------|------|
+| Anthropic (default) | claude-sonnet-4-20250514 | `ANTHROPIC_API_KEY` | Higher quality |
+| OpenAI | gpt-4.1-mini | `OPENAI_API_KEY` | More affordable |
+
+The developer needs an API key for their chosen provider. If they already have an `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in their environment, detect and use it automatically.
+
+The copilot-engine repo is at: https://github.com/femitfash/copilot-engine
 
 ### Step 1: Fork, Clone, and Set Up copilot-engine
 
@@ -81,7 +112,10 @@ Then update `copilot-engine/routes/copilot.ts` and `routes/execute.ts` imports t
 Update `copilot-engine/src/config.ts` to include your app's API URL environment variables.
 
 Update `copilot-engine/.env` with:
-- `ANTHROPIC_API_KEY`
+- `LLM_PROVIDER` — set to `anthropic` (default) or `openai`
+- `LLM_MODEL` — optional override (e.g., `gpt-4.1-mini`, `claude-sonnet-4-20250514`)
+- The matching API key: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+- If the developer has an API key in their shell environment, auto-populate it in `.env`
 - Your app's API URLs
 - `ALLOWED_ORIGINS` must exactly match your app's dev server URL (e.g., `http://localhost:4200`) — wildcards will fail for credentialed requests
 - `PORT=3100`
@@ -279,11 +313,58 @@ grep -r "--header-bg\|--dropdown-bg" src/
 - Add `CopilotApiUrl` to config template and env generator (or Vite env vars like `VITE_COPILOT_API_URL`)
 - Add COPILOT_* translation keys to all i18n files (if the app has i18n)
 
-### Step 7: Verify
+### Step 7: Install QA Skill
+
+Copy the integration QA skill from copilot-engine to the target app so the developer can run `/qa-integration` from their project directory:
+
+```bash
+mkdir -p .claude/skills
+cp ../copilot-engine/.claude/skills/qa-integration.md .claude/skills/qa-integration.md
+```
+
+### Step 8: Verify
 
 1. Start copilot-engine: `cd ../copilot-engine && npm run dev`
 2. Start the app: `npm start` (or `npm run dev`)
 3. Test: navigation pill buttons work, action prompts return responses, dark mode renders correctly, header menus appear above copilot panel
+
+### Step 9: Summary — What Was Done
+
+After completing all steps, output this summary so the developer knows what was created:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✅  AI Copilot Integration Complete
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  LLM Provider:  {provider} ({model})
+  Engine:        ../copilot-engine/ (port {PORT})
+  Project:       copilot-engine/projects/{app-name}/
+  Frontend:      {n} components + {n} services created
+
+  Files created in copilot-engine:
+    projects/{app-name}/system-prompt.ts
+    projects/{app-name}/tools.ts         ({n} READ + {n} WRITE tools)
+    projects/{app-name}/tool-executor.ts
+
+  Files created in {app-name}:
+    {list each component, service, and types file created}
+    .claude/skills/qa-integration.md
+
+  To start:
+    Terminal 1:  cd ../copilot-engine && npm run dev
+    Terminal 2:  npm start  (or your app's dev command)
+
+  To verify:
+    Run /qa-integration from Claude Code in this directory
+
+  Docs:
+    Integration guide:  ../copilot-engine/COPILOT_SKILL.md
+    Known pitfalls:     ../copilot-engine/KNOWN-ISSUES.md
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Replace `{placeholders}` with actual values from the integration.
 
 ---
 

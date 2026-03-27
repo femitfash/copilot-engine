@@ -1,8 +1,8 @@
 # Copilot Engine
 
-A reusable, project-agnostic backend for building Claude-powered AI copilots with agentic tool use, SSE streaming, and action approval workflows.
+A reusable, LLM-agnostic backend for building AI copilots with agentic tool use, SSE streaming, and action approval workflows. Supports **Anthropic Claude** and **OpenAI GPT** (including gpt-4.1-mini).
 
-**Ships with:** agentic loop (up to 4 Claude iterations), READ/WRITE tool separation, word-by-word SSE streaming, auth middleware, and a pluggable project system — swap the system prompt, tools, and executor to adapt to any domain.
+**Ships with:** agentic loop (up to 4 LLM iterations), READ/WRITE tool separation, word-by-word SSE streaming, auth middleware, and a pluggable project system — swap the system prompt, tools, and executor to adapt to any domain.
 
 > Includes a reference implementation (`projects/zerotrusted/`) showing a production integration with the [ZeroTrusted AI Governance platform](https://zerotrusted.ai) — 14 READ + 10 WRITE tools covering PII detection, compliance, health checks, and more. Use `projects/example/` as a starter template for your own project.
 
@@ -10,31 +10,38 @@ A reusable, project-agnostic backend for building Claude-powered AI copilots wit
 
 ## Quick Start
 
-### Option A — Claude Code (recommended, 2 steps)
+### Option A — Claude Code (recommended, 1 prompt)
 
-From your project directory, paste these two prompts into Claude Code:
+From your project directory, paste this single prompt into Claude Code:
 
-> **Prompt 1:** Copy COPILOT_SKILL.md from the repo (https://github.com/femitfash/copilot-engine) into this project's .claude/skills/add-copilot.md. Create directories if missing.
+> Add an AI copilot to this application using the skill at https://github.com/femitfash/copilot-engine/blob/master/COPILOT_SKILL.md
 
-> **Prompt 2:** Add an AI copilot to this application using the skill in .claude/skills/add-copilot.md
-
-Claude Code will fork the repo, clone it, create your backend project, scaffold frontend components, and wire everything together.
+Claude Code will fork the repo, clone it, create your backend project, scaffold frontend components, and wire everything together. It will ask which LLM provider you prefer (Anthropic or OpenAI).
 
 After integration, run `/qa-integration` from Claude Code to verify everything works end-to-end.
 
-**Prerequisite:** [GitHub CLI](https://cli.github.com/) (`gh`) must be installed and authenticated.
+**Prerequisites:** [Node.js 18+](https://nodejs.org), [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated.
 
 ### Option B — Manual setup
 
 ```bash
+# 1. Fork and clone
 gh repo fork femitfash/copilot-engine --clone
 cd copilot-engine
 npm install
 cp .env.example .env
-# Edit .env — add your ANTHROPIC_API_KEY
+
+# 2. Configure .env — choose your LLM provider:
+#    LLM_PROVIDER=anthropic  (default) → set ANTHROPIC_API_KEY
+#    LLM_PROVIDER=openai               → set OPENAI_API_KEY
+#    LLM_MODEL=gpt-4.1-mini            (optional model override)
+
+# 3. Start the engine
 npm run dev
 # Server running on http://localhost:3100
 ```
+
+Then follow Steps 2-9 in [COPILOT_SKILL.md](COPILOT_SKILL.md) to create your project, scaffold the frontend, and verify the integration.
 
 Test it:
 

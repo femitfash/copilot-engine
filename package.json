@@ -1,7 +1,7 @@
 {
   "name": "copilot-engine",
   "version": "1.1.0",
-  "description": "Reusable backend for building Claude-powered AI copilots with agentic tool use, SSE streaming, and action approval workflows",
+  "description": "Reusable, LLM-agnostic backend for building AI copilots with agentic tool use, SSE streaming, and action approval workflows. Supports Anthropic Claude and OpenAI GPT.",
   "main": "dist/index.js",
   "author": "femitfash",
   "license": "MIT",
@@ -17,11 +17,14 @@
     "copilot",
     "claude",
     "anthropic",
+    "openai",
+    "gpt",
     "ai",
     "agentic",
     "sse",
     "streaming",
-    "tool-use"
+    "tool-use",
+    "llm-agnostic"
   ],
   "engines": {
     "node": ">=18.0.0"
@@ -36,13 +39,14 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "openai": "^6.33.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.12.0",
-    "typescript": "^5.7.3",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
   }
 }

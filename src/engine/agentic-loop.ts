@@ -1,7 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type { Tool, Message, ToolResult, ToolUseBlock, LLMProvider } from "./llm-types";
+import { getLLMConfig, createProvider } from "./providers";
 
 const MAX_ITERATIONS = 4;
-const MODEL = "claude-sonnet-4-20250514";
 const MAX_TOOL_RESULT_CHARS = 8000;
 
 function truncateResult(result: string): string {
@@ -25,7 +25,7 @@ export async function runAgenticLoop(
   systemPrompt: string,
   userMessage: string,
   history: Array<{ role: string; content: string }>,
-  tools: Anthropic.Tool[],
+  tools: Tool[],
   writeToolNames: Set<string>,
   executeReadTool: (
     name: string,
@@ -34,12 +34,13 @@ export async function runAgenticLoop(
   ) => Promise<string>,
   ctx: any
 ): Promise<AgenticResult> {
-  const client = new Anthropic();
+  const config = getLLMConfig();
+  const provider: LLMProvider = createProvider(config);
   const pendingActions: PendingAction[] = [];
   let collectedText = "";
 
   // Build messages array
-  const messages: Anthropic.MessageParam[] = [
+  const messages: Message[] = [
     ...history.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
@@ -48,9 +49,9 @@ export async function runAgenticLoop(
   ];
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 4096,
+    const response = await provider.createMessage({
+      model: config.model,
+      maxTokens: config.maxTokens || 4096,
       system: systemPrompt,
       tools,
       messages,
@@ -65,16 +66,15 @@ export async function runAgenticLoop(
 
     // Check for tool use
     const toolUseBlocks = response.content.filter(
-      (b): b is Anthropic.ContentBlockParam & { type: "tool_use" } =>
-        b.type === "tool_use"
+      (b): b is ToolUseBlock => b.type === "tool_use"
     );
 
-    if (toolUseBlocks.length === 0 || response.stop_reason !== "tool_use") {
+    if (toolUseBlocks.length === 0 || response.stopReason !== "tool_use") {
       break; // No more tool calls, we're done
     }
 
     // Process tool calls
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    const toolResults: ToolResult[] = [];
 
     for (const toolCall of toolUseBlocks) {
       if (writeToolNames.has(toolCall.name)) {
@@ -82,11 +82,10 @@ export async function runAgenticLoop(
         pendingActions.push({
           id: toolCall.id,
           name: toolCall.name,
-          input: toolCall.input as Record<string, unknown>,
+          input: toolCall.input,
           status: "pending",
         });
         toolResults.push({
-          type: "tool_result",
           tool_use_id: toolCall.id,
           content:
             "ACTION NOT YET EXECUTED. This action has been QUEUED for user approval. " +
@@ -97,17 +96,15 @@ export async function runAgenticLoop(
         try {
           const result = await executeReadTool(
             toolCall.name,
-            toolCall.input as Record<string, unknown>,
+            toolCall.input,
             ctx
           );
           toolResults.push({
-            type: "tool_result",
             tool_use_id: toolCall.id,
             content: truncateResult(result),
           });
         } catch (err: any) {
           toolResults.push({
-            type: "tool_result",
             tool_use_id: toolCall.id,
             content: `Error executing ${toolCall.name}: ${err.message}`,
             is_error: true,
@@ -117,7 +114,7 @@ export async function runAgenticLoop(
     }
 
     // Add assistant response + tool results to message history for next iteration
-    messages.push({ role: "assistant", content: response.content as any });
+    messages.push({ role: "assistant", content: response.content });
     messages.push({ role: "user", content: toolResults });
   }
 

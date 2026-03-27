@@ -1,8 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type { Tool } from "../../src/engine/llm-types";
 
 // ─── READ Tools (auto-execute in agentic loop) ─────────────────────────────
 
-export const READ_TOOLS: Anthropic.Tool[] = [
+export const READ_TOOLS: Tool[] = [
   {
     name: "get_dashboard_stats",
     description:
@@ -267,7 +267,7 @@ export const READ_TOOLS: Anthropic.Tool[] = [
 
 // ─── WRITE Tools (queued for user approval) ─────────────────────────────────
 
-export const WRITE_TOOLS: Anthropic.Tool[] = [
+export const WRITE_TOOLS: Tool[] = [
   {
     name: "create_profile",
     description:

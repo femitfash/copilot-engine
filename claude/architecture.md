@@ -17,7 +17,8 @@ routes/copilot.ts
     ▼
 src/engine/agentic-loop.ts  ──── up to 4 iterations ────┐
     │                                                      │
-    │  Call Claude API (claude-sonnet-4-20250514)          │
+    │  Call LLM via provider adapter                       │
+    │  (Anthropic or OpenAI — set via LLM_PROVIDER)       │
     │  with system prompt + user message + history         │
     │                                                      │
     │  ┌──── tool_use block? ────┐                        │
@@ -26,7 +27,7 @@ src/engine/agentic-loop.ts  ──── up to 4 iterations ────┐
     │  Execute immediately       Queue as pendingAction   │
     │  via executeReadTool()     Feed back "NOT YET       │
     │  Truncate to 8000 chars    EXECUTED" message        │
-    │  Feed result back          to Claude                │
+    │  Feed result back          to the LLM                │
     │                                                      │
     └──────────────────── loop ───────────────────────────┘
     │
@@ -70,8 +71,8 @@ Each `projects/{name}/` directory contains exactly three files:
 
 | File | Exports | Purpose |
 |------|---------|---------|
-| `system-prompt.ts` | `SYSTEM_PROMPT: string` | Domain-specific Claude instructions |
-| `tools.ts` | `ALL_TOOLS`, `WRITE_TOOL_NAMES` | Tool definitions (Anthropic format) |
+| `system-prompt.ts` | `SYSTEM_PROMPT: string` | Domain-specific LLM instructions |
+| `tools.ts` | `ALL_TOOLS`, `WRITE_TOOL_NAMES` | Tool definitions (provider-agnostic format) |
 | `tool-executor.ts` | `executeReadTool`, `executeWriteTool` | API call implementations |
 
 To add a new project:
@@ -84,14 +85,18 @@ To add a new project:
 - **SSE over WebSocket** — simpler, HTTP-native, no upgrade handshake, works through all proxies
 - **READ/WRITE separation** — READ tools are safe to auto-execute; WRITE tools require user approval (safety + UX)
 - **Token forwarding** — the user's auth token/cookie is forwarded to every API call in the tool executor
-- **Result truncation** — all tool results are capped at 8000 chars to prevent Claude token overflow
+- **LLM-agnostic** — provider abstraction layer supports Anthropic and OpenAI; swap with one env var
+- **Result truncation** — all tool results are capped at 8000 chars to prevent LLM token overflow
 - **Max 4 agentic iterations** — prevents runaway loops; sufficient for multi-hop tool chaining
 
 ## Environment Variables
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ANTHROPIC_API_KEY` | (required) | Claude API key |
+| `LLM_PROVIDER` | `anthropic` | LLM provider: `anthropic` or `openai` |
+| `LLM_MODEL` | per-provider | Model override (e.g., `gpt-4.1-mini`) |
+| `ANTHROPIC_API_KEY` | (required if anthropic) | Anthropic API key |
+| `OPENAI_API_KEY` | (required if openai) | OpenAI API key |
 | `PORT` | `3100` | Server port |
 | `ALLOWED_ORIGINS` | `http://localhost:4000` | CORS whitelist (comma-separated) |
 | `AISOAR_API_URL` | `http://localhost:5000` | AISOAR backend URL |

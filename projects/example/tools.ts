@@ -1,13 +1,13 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type { Tool } from "../../src/engine/llm-types";
 
 /**
  * Example tool definitions — replace with your app's domain tools.
  *
- * READ tools: auto-execute in the agentic loop, results fed back to Claude
+ * READ tools: auto-execute in the agentic loop, results fed back to the LLM
  * WRITE tools: queued as pendingActions, shown to user for approval
  */
 
-export const READ_TOOLS: Anthropic.Tool[] = [
+export const READ_TOOLS: Tool[] = [
   {
     name: "get_settings",
     description: "Get the user's current application settings",
@@ -33,7 +33,7 @@ export const READ_TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-export const WRITE_TOOLS: Anthropic.Tool[] = [
+export const WRITE_TOOLS: Tool[] = [
   {
     name: "create_item",
     description: "Create a new item in the workspace",
