@@ -48,6 +48,32 @@ The developer needs an API key for their chosen provider. If they already have a
 
 The copilot-engine repo is at: https://github.com/femitfash/copilot-engine
 
+### Optional Features
+
+copilot-engine includes optional feature modules that can be enabled during setup. Ask the developer which features they want:
+
+| Feature | Description | Requires |
+|---------|-------------|----------|
+| `security-scanner` | WordPress security scanning — vulnerability checks, SSL audit, user security, hardening recommendations | `SUPABASE_URL` + `SUPABASE_ANON_KEY` for logging (optional) |
+
+If the developer enables features, set `COPILOT_FEATURES` in `.env` (comma-separated list of feature names).
+
+For the `security-scanner` feature with Supabase logging:
+- Developer provides `SUPABASE_URL` and `SUPABASE_ANON_KEY` (from their Supabase project dashboard)
+- Tables are auto-created on first run: `security_scans`, `security_findings`, `security_events`
+- Scan results can be viewed in the Supabase dashboard (Table Editor) or queried through the copilot
+- If Supabase is not configured, the scanner still works but results are not persisted
+
+### WordPress Detection
+
+If the app is a WordPress installation (detected by `wp-config.php`, `wp-content/` directory, or WordPress REST API at `/wp-json/`):
+- Use `projects/wordpress/` as the project template
+- WordPress uses **Application Passwords** for REST API auth (built-in since WP 5.6)
+- The developer needs to create an Application Password in WordPress: Users → Profile → Application Passwords
+- Store the base64-encoded `username:app_password` as the auth token
+- Set `WP_API_URL` in `.env` to the WordPress site URL (e.g., `http://localhost:8080`)
+- The welcome prompt template uses **two tabs**: "WordPress" (navigation + content actions) and "Security" (scanning + hardening)
+
 ### Deployment Mode: Built-in vs Standalone
 
 Before proceeding, determine which deployment mode fits this project.

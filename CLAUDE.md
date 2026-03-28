@@ -89,7 +89,10 @@ copilot-engine/
 │       ├── project-config.ts # ProjectConfig interface
 │       ├── route-factories.ts# createCopilotRoute(), createExecuteRoute()
 │       └── sse-stream.ts     # SSE streaming helpers
-│   └── mount.ts              # mountCopilot() for built-in mode
+│   ├── mount.ts              # mountCopilot() for built-in mode
+│   └── features/             # Optional feature modules
+│       ├── feature-module.ts  # FeatureModule interface + loader
+│       └── security-scanner/  # Security scanning + Supabase logging
 ├── routes/
 │   ├── copilot.ts            # POST /api/copilot
 │   └── execute.ts            # POST /api/copilot/execute
@@ -98,6 +101,7 @@ copilot-engine/
 │   │   ├── system-prompt.ts
 │   │   ├── tools.ts
 │   │   └── tool-executor.ts
+│   ├── wordpress/            # WordPress project (content, plugins, themes, security)
 │   └── example/              # Starter template for new projects
 ├── claude/                   # Modular Claude context (architecture, conventions)
 ├── .claude/                  # Claude Code config (settings, agents, commands)
