@@ -33,65 +33,173 @@ npm --version
 - If Node < 18: stop and tell the developer to install Node 18+ from https://nodejs.org
 - If `gh` not found: stop and tell the developer to install GitHub CLI from https://cli.github.com/
 - If `gh auth status` fails: stop and tell the developer to run `gh auth login`
-- Confirm the app uses a modern frontend framework (Angular 14+, React 16+, Vue 3+, or similar) by checking `package.json`
 
-### LLM Provider Setup
+After checks pass, display:
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Pre-flight checks passed ✅
+  Node.js: v{version}
+  GitHub CLI: authenticated as {username}
+  npm: v{version}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
-copilot-engine supports multiple LLM providers. Ask the developer which they want to use:
+### Step 0.5: Detect Project Type
 
-| Provider | Default Model | Env Variable | Cost |
-|----------|--------------|--------------|------|
-| Anthropic (default) | claude-sonnet-4-20250514 | `ANTHROPIC_API_KEY` | Higher quality |
-| OpenAI | gpt-4.1-mini | `OPENAI_API_KEY` | More affordable |
+Scan the project directory to determine what kind of application this is. **Display your findings to the developer.**
 
-The developer needs an API key for their chosen provider. If they already have an `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in their environment, detect and use it automatically.
+Check in this order:
+1. Look for `wp-config.php` or `wp-content/` directory → **WordPress detected**
+2. Look for `package.json` → read it to determine framework (Angular, React, Vue, Next.js, Express, NestJS)
+3. If neither found → ask the developer what kind of project this is
+
+**Display the detection result:**
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Project detected: {WordPress / Angular / React / etc.}
+  {additional details: WP version, framework version, etc.}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### WordPress-Specific Setup
+
+If WordPress is detected, display and follow this flow:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🔧 WordPress Copilot Setup
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  WordPress uses Application Passwords for API access.
+  You'll need to create one in your WordPress admin:
+
+  wp-admin → Users → Your Profile → Application Passwords
+
+  Enter a name (e.g., "Copilot") and click "Add New".
+  Copy the generated password (shown only once).
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Then ask the developer for:
+1. **WordPress site URL** (e.g., `http://localhost:8080`)
+2. **WordPress username** (the admin account)
+3. **Application Password** (the one they just created)
+
+Set `WP_API_URL` in `.env`. The auth token is base64-encoded `username:app_password`.
+
+Use `projects/wordpress/` as the project template — it has 15 READ + 11 WRITE tools for content, plugins, themes, users, and site management.
+
+The welcome prompt template uses **two tabs**: "WordPress" (navigation + content actions) and "Security" (scanning + hardening actions).
+
+### LLM Provider Selection
+
+**Display this choice to the developer and wait for their answer:**
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🤖 Choose your LLM provider:
+
+  1. Anthropic Claude (default)
+     Model: claude-sonnet-4-20250514
+     Requires: ANTHROPIC_API_KEY
+
+  2. OpenAI GPT
+     Model: gpt-4.1-mini (affordable)
+     Requires: OPENAI_API_KEY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+If they already have an `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in their environment, detect it and display:
+```
+  Detected: ANTHROPIC_API_KEY in environment ✅
+  Using Anthropic Claude as your LLM provider.
+```
 
 The copilot-engine repo is at: https://github.com/femitfash/copilot-engine
 
 ### Optional Features
 
-copilot-engine includes optional feature modules that can be enabled during setup. Ask the developer which features they want:
+**Display available features and ask the developer which to enable:**
 
-| Feature | Description | Requires |
-|---------|-------------|----------|
-| `security-scanner` | WordPress security scanning — vulnerability checks, SSL audit, user security, hardening recommendations | `SUPABASE_URL` + `SUPABASE_ANON_KEY` for logging (optional) |
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  📦 Optional Features:
 
-If the developer enables features, set `COPILOT_FEATURES` in `.env` (comma-separated list of feature names).
+  [ ] security-scanner
+      WordPress security scanning — vulnerability checks,
+      plugin audits, SSL verification, user security,
+      hardening recommendations.
 
-For the `security-scanner` feature with Supabase logging:
-- Developer provides `SUPABASE_URL` and `SUPABASE_ANON_KEY` (from their Supabase project dashboard)
-- Tables are auto-created on first run: `security_scans`, `security_findings`, `security_events`
-- Scan results can be viewed in the Supabase dashboard (Table Editor) or queried through the copilot
-- If Supabase is not configured, the scanner still works but results are not persisted
+      Optional: Connect Supabase for scan history & dashboard.
+      Provide SUPABASE_URL + SUPABASE_ANON_KEY to enable logging.
+      (Scanner works without Supabase, results just aren't saved.)
 
-### WordPress Detection
+  Enable security-scanner? (y/n)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
-If the app is a WordPress installation (detected by `wp-config.php`, `wp-content/` directory, or WordPress REST API at `/wp-json/`):
-- Use `projects/wordpress/` as the project template
-- WordPress uses **Application Passwords** for REST API auth (built-in since WP 5.6)
-- The developer needs to create an Application Password in WordPress: Users → Profile → Application Passwords
-- Store the base64-encoded `username:app_password` as the auth token
-- Set `WP_API_URL` in `.env` to the WordPress site URL (e.g., `http://localhost:8080`)
-- The welcome prompt template uses **two tabs**: "WordPress" (navigation + content actions) and "Security" (scanning + hardening)
+If the developer enables `security-scanner`:
+- Ask: "Do you have a Supabase project for logging? (optional)"
+- If yes: ask for `SUPABASE_URL` and `SUPABASE_ANON_KEY`
+- Set `COPILOT_FEATURES=security-scanner` in `.env`
+- Tables (`security_scans`, `security_findings`, `security_events`) are auto-created on first run
+- Developer views results at their Supabase dashboard (Table Editor) or through the copilot
 
 ### Deployment Mode: Built-in vs Standalone
 
-Before proceeding, determine which deployment mode fits this project.
+**Compatibility check — determine if built-in mode is possible:**
 
-**Compatibility check — read the app's `package.json`:**
+For WordPress: WordPress is typically PHP-based without a Node.js/Express server. **Default to Standalone mode** unless the developer also has an Express server alongside WordPress.
+
+For other frameworks — read the app's `package.json`:
 1. If `express` is in dependencies AND a server entry file exists (server.ts, index.ts, app.ts, main.ts) → **Built-in compatible**
 2. If `@nestjs/core` is in dependencies → **Built-in compatible** (NestJS uses Express underneath)
 3. If `next` is in dependencies AND a custom server file exists (server.ts/server.js with Express) → **Built-in compatible**
 4. If `next` is in dependencies but NO custom server → **Standalone only** — inform: "Your Next.js app uses the built-in server. The copilot will run as a standalone server on port 3100."
 5. If no server-side framework found (frontend-only SPA) → **Standalone only** — inform: "Your app doesn't have a backend server. The copilot will run as a standalone server on port 3100."
 
-**If built-in is compatible, ask the developer:**
+**If built-in is compatible, display this choice:**
 
-> How would you like to set up the copilot?
-> 1. **Built-in** — runs on your existing server, no separate process. Simpler to manage — one `npm start` runs everything.
-> 2. **Standalone** — runs as its own server on port 3100. Better if you want to share the copilot across multiple apps or keep it completely isolated.
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🏗️ Deployment Mode:
+
+  1. Built-in
+     Runs on your existing server — same port, one process.
+     Simpler to manage. One `npm start` runs everything.
+
+  2. Standalone
+     Runs as its own server on port 3100.
+     Better for shared/multi-app setups or full isolation.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**If standalone is the only option** (WordPress, SPA-only, pure Next.js), display:
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🏗️ Deployment Mode: Standalone
+  Your project will use a separate copilot server on port 3100.
+  {reason: e.g., "WordPress is PHP-based and doesn't have a Node.js server."}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
 If they choose Built-in, follow **Path A** below. If Standalone, follow **Path B**.
+
+**Before proceeding, display the full setup summary:**
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  📋 Setup Summary
+
+  Project:        {WordPress / Angular / React / etc.}
+  LLM Provider:   {Anthropic Claude / OpenAI GPT}
+  Deployment:     {Built-in / Standalone (port 3100)}
+  Features:       {security-scanner / none}
+  Supabase:       {Connected / Not configured}
+  WP API URL:     {url}  (WordPress only)
+
+  Proceeding with installation...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
 ---
 
