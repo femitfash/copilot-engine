@@ -7,7 +7,7 @@
 
 ## Project Overview
 
-Copilot Engine is a reusable, LLM-agnostic Express backend for building AI copilots. Supports Anthropic Claude and OpenAI GPT (including gpt-4.1-mini). It handles:
+Copilot Engine is a reusable, LLM-agnostic Express backend for building AI copilots. Supports Anthropic Claude and OpenAI GPT (including gpt-4.1-mini). Two deployment modes: **Built-in** (mounts on your existing server) or **Standalone** (runs as a separate process on port 3100). It handles:
 - Agentic tool-use loop (LLM calls READ tools immediately; WRITE tools are queued for user approval)
 - SSE streaming (word-by-word at ~40 words/sec)
 - Auth middleware (bearer token, session cookies, or dev header)
@@ -86,7 +86,10 @@ copilot-engine/
 │       │   ├── index.ts      # getLLMConfig(), createProvider()
 │       │   ├── anthropic.ts  # Anthropic Claude adapter
 │       │   └── openai.ts     # OpenAI GPT adapter
+│       ├── project-config.ts # ProjectConfig interface
+│       ├── route-factories.ts# createCopilotRoute(), createExecuteRoute()
 │       └── sse-stream.ts     # SSE streaming helpers
+│   └── mount.ts              # mountCopilot() for built-in mode
 ├── routes/
 │   ├── copilot.ts            # POST /api/copilot
 │   └── execute.ts            # POST /api/copilot/execute

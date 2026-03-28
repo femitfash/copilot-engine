@@ -36,21 +36,20 @@ app.use(express.json({ limit: "10mb" }));
 // Auth middleware for all /api routes
 app.use("/api", validateToken);
 
-// Routes
-app.use(copilotRoute);
-app.use(executeRoute);
+// Routes — factory-generated routers mounted at their base paths
+app.use("/api/copilot", copilotRoute);
+app.use("/api/copilot", executeRoute);
 
 // Health check (no auth needed)
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "zt-copilot-engine" });
+  res.json({ status: "ok", service: "copilot-engine", mode: "standalone" });
 });
 
 app.listen(PORT, () => {
   console.log(`
 ╔══════════════════════════════════════════════╗
-║  ZT Copilot Engine — http://localhost:${PORT}   ║
-║  Keep this terminal running alongside your   ║
-║  frontend app.                               ║
+║  Copilot Engine — http://localhost:${PORT}      ║
+║  Mode: standalone                            ║
 ║  Health check: GET /health                   ║
 ╚══════════════════════════════════════════════╝
 `);

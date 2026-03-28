@@ -14,6 +14,20 @@ You are running post-integration QA for a copilot-engine deployment. Your goal i
 
 ## Phase 1 — Discover Environment
 
+**First, detect the deployment mode:**
+- If `src/copilot/mount.ts` exists in the current project → **Built-in mode**
+- If `../copilot-engine/` exists as a sibling directory → **Standalone mode**
+- If neither found: ask the developer for the copilot location
+
+### Built-in mode discovery:
+1. Read `src/copilot/tools.ts` to discover tools and their schemas
+2. Read `src/copilot/tool-executor.ts` to discover API endpoints
+3. Read `src/copilot/system-prompt.ts` to understand the domain
+4. Read `src/copilot/config.ts` for API URLs
+5. The copilot endpoints are on the SAME port as the app (e.g., `/api/copilot`, `/api/copilot/execute`)
+6. No separate `ALLOWED_ORIGINS` to check — same origin
+
+### Standalone mode discovery:
 1. Find the copilot-engine directory. Check these in order:
    - Sibling directory: `../copilot-engine/`
    - If not found: ask the developer for the path
@@ -42,26 +56,29 @@ You are running post-integration QA for a copilot-engine deployment. Your goal i
 
 ## Phase 2 — Engine Health
 
-Run the same checks as the isolated QA agent:
-
 ### 2a. Node version
 Run: `node --version`
 - If < 18: report `❌ Node version is X — copilot-engine requires Node v18+` and stop
 - If >= 18: ✅
 
-### 2b. .env file
-- If missing: `cp .env.example .env` and warn to set `ANTHROPIC_API_KEY`
-- If `ANTHROPIC_API_KEY` is empty or placeholder: report ❌ and stop
+### 2b. LLM API key
+- Check `.env` (built-in: app's `.env`, standalone: `copilot-engine/.env`)
+- Look for `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` based on `LLM_PROVIDER` setting
+- If missing/placeholder: report ❌ and stop
 - If set: ✅
 
-### 2c. node_modules
-- If missing: run `npm install` in the copilot-engine directory
-- If exists: ✅
+### 2c. Dependencies
+- **Built-in**: check app's `node_modules` has `@anthropic-ai/sdk` or `openai`
+- **Standalone**: check copilot-engine's `node_modules` exists; if missing run `npm install`
+- ✅ when present
 
-### 2d. Engine server health
-Run: `curl -s http://localhost:{PORT}/health`
+### 2d. Server health
+- **Built-in**: `curl -s http://localhost:{APP_PORT}/api/copilot/health` — the copilot health endpoint is on the app's port
+- **Standalone**: `curl -s http://localhost:{ENGINE_PORT}/health`
 - If `{"status":"ok"}`: ✅
-- If connection refused: start with `cd {copilot-engine-dir} && npm run dev &`, wait 3 seconds, retry
+- If connection refused:
+  - **Built-in**: the app isn't running — ask the developer for the start command
+  - **Standalone**: start with `cd {copilot-engine-dir} && npm run dev &`, wait 3 seconds, retry
 - If still failing: report ❌ and stop
 
 ---
@@ -70,6 +87,9 @@ Run: `curl -s http://localhost:{PORT}/health`
 
 Test that the target application is running and reachable.
 
+**Built-in mode:** If Phase 2d passed, the app (and copilot) are already running. Skip to step 4.
+
+**Standalone mode:**
 1. Extract the target app URL from `ALLOWED_ORIGINS` (e.g., `http://localhost:4200`)
 2. Attempt to reach it: `curl -s -o /dev/null -w "%{http_code}" {target-app-url}`
 3. If not reachable (status `000` or connection refused):
@@ -78,6 +98,7 @@ Test that the target application is running and reachable.
    - Wait 5 seconds and retry
    - If still down: report ❌ and stop
 
+**Both modes:**
 4. Test a basic API endpoint that the tool-executor calls:
    - Pick the first READ tool's API endpoint from `tool-executor.ts`
    - Call it with `curl` (use the dev auth header `x-copilot-auth: dev`)
@@ -89,6 +110,10 @@ Test that the target application is running and reachable.
 ---
 
 ## Phase 4 — CORS & Connectivity
+
+**Built-in mode:** Skip this entire phase — CORS is not needed when the copilot runs on the same origin as the app. Mark as ✅ and proceed to Phase 5.
+
+**Standalone mode:**
 
 ### 4a. ALLOWED_ORIGINS validation
 - Read `ALLOWED_ORIGINS` from copilot-engine `.env`

@@ -56,9 +56,22 @@ curl -N -X POST http://localhost:3100/api/copilot \
 
 ## Post-Installation
 
-> **Copilot Engine runs as a separate backend process.** It is NOT bundled into your frontend app.
+### Built-in vs Standalone
 
-### What you need running at the same time
+During setup, you'll be asked how to deploy the copilot engine:
+
+| Mode | How it works | Best for |
+|------|-------------|----------|
+| **Built-in** | Copilot runs on your existing server — same port, one process | Most projects with an Express/NestJS backend |
+| **Standalone** | Copilot runs as its own server on port 3100 | Shared/multi-app setups, frontend-only SPAs |
+
+Both modes use the same engine code and features. Built-in requires an Express-compatible backend (Express, NestJS, or Next.js with a custom server).
+
+### What you need running
+
+**Built-in mode:** Just your app — `npm start` runs everything.
+
+**Standalone mode:**
 
 | Process | Command | Port |
 |---------|---------|------|

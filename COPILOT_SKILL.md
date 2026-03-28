@@ -48,7 +48,164 @@ The developer needs an API key for their chosen provider. If they already have a
 
 The copilot-engine repo is at: https://github.com/femitfash/copilot-engine
 
-### Step 1: Fork, Clone, and Set Up copilot-engine
+### Deployment Mode: Built-in vs Standalone
+
+Before proceeding, determine which deployment mode fits this project.
+
+**Compatibility check — read the app's `package.json`:**
+1. If `express` is in dependencies AND a server entry file exists (server.ts, index.ts, app.ts, main.ts) → **Built-in compatible**
+2. If `@nestjs/core` is in dependencies → **Built-in compatible** (NestJS uses Express underneath)
+3. If `next` is in dependencies AND a custom server file exists (server.ts/server.js with Express) → **Built-in compatible**
+4. If `next` is in dependencies but NO custom server → **Standalone only** — inform: "Your Next.js app uses the built-in server. The copilot will run as a standalone server on port 3100."
+5. If no server-side framework found (frontend-only SPA) → **Standalone only** — inform: "Your app doesn't have a backend server. The copilot will run as a standalone server on port 3100."
+
+**If built-in is compatible, ask the developer:**
+
+> How would you like to set up the copilot?
+> 1. **Built-in** — runs on your existing server, no separate process. Simpler to manage — one `npm start` runs everything.
+> 2. **Standalone** — runs as its own server on port 3100. Better if you want to share the copilot across multiple apps or keep it completely isolated.
+
+If they choose Built-in, follow **Path A** below. If Standalone, follow **Path B**.
+
+---
+
+### Path A — Built-in Mode
+
+#### Step 1A: Fork, Clone, and Copy Engine Files
+
+Fork and clone the copilot-engine repo (this benefits the open-source project and gives you a reference for future updates):
+
+```bash
+gh repo fork femitfash/copilot-engine --clone=false
+GITHUB_USER=$(gh api user --jq .login)
+cd .. && git clone "https://github.com/$GITHUB_USER/copilot-engine.git"
+cd copilot-engine && git remote add upstream https://github.com/femitfash/copilot-engine.git
+cd ../{app-directory}
+```
+
+Copy engine source files into the app's project:
+
+```bash
+mkdir -p src/copilot/engine/providers src/copilot/auth src/copilot/routes
+```
+
+Copy these files from copilot-engine into `src/copilot/`:
+
+| Source (copilot-engine/) | Destination (src/copilot/) |
+|--------------------------|---------------------------|
+| `src/engine/agentic-loop.ts` | `engine/agentic-loop.ts` |
+| `src/engine/llm-types.ts` | `engine/llm-types.ts` |
+| `src/engine/sse-stream.ts` | `engine/sse-stream.ts` |
+| `src/engine/project-config.ts` | `engine/project-config.ts` |
+| `src/engine/route-factories.ts` | `engine/route-factories.ts` |
+| `src/engine/providers/index.ts` | `engine/providers/index.ts` |
+| `src/engine/providers/anthropic.ts` | `engine/providers/anthropic.ts` |
+| `src/engine/providers/openai.ts` | `engine/providers/openai.ts` |
+| `src/auth/validate-token.ts` | `auth/validate-token.ts` |
+| `src/mount.ts` | `mount.ts` |
+
+**Important:** After copying, fix the import paths in `mount.ts` — change `"./auth/validate-token"` to `"./auth/validate-token"` and `"./engine/route-factories"` to `"./engine/route-factories"` (these should already be correct since the directory structure mirrors the source).
+
+Install only the LLM SDK the developer chose:
+```bash
+npm install @anthropic-ai/sdk   # if Anthropic
+# OR
+npm install openai              # if OpenAI
+```
+
+#### Step 2A: Create Project Files
+
+Create these files directly in `src/copilot/` (NOT in a separate `projects/` directory):
+
+**`src/copilot/system-prompt.ts`** — domain-specific system prompt (same guidance as Step 2 in standalone).
+
+**`src/copilot/tools.ts`** — tool definitions using the generic `Tool` type:
+```typescript
+import type { Tool } from "./engine/llm-types";
+export const READ_TOOLS: Tool[] = [ ... ];
+export const WRITE_TOOLS: Tool[] = [ ... ];
+export const WRITE_TOOL_NAMES = new Set(WRITE_TOOLS.map(t => t.name));
+export const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS];
+```
+
+**`src/copilot/tool-executor.ts`** — tool execution logic (same guidance as Step 2 in standalone).
+
+**`src/copilot/config.ts`** — project-specific config:
+```typescript
+export function getConfig() {
+  return {
+    apiUrl: process.env.APP_API_URL || "http://localhost:5000",
+    // ... other project-specific URLs
+  };
+}
+```
+
+**`src/copilot/index.ts`** — barrel file that wires everything together:
+```typescript
+import type { Express } from "express";
+import { mountCopilot } from "./mount";
+import type { ProjectConfig } from "./engine/project-config";
+import { SYSTEM_PROMPT, getResponseModeInstruction } from "./system-prompt";
+import { ALL_TOOLS, WRITE_TOOL_NAMES } from "./tools";
+import { executeReadTool, executeWriteTool } from "./tool-executor";
+import { getConfig } from "./config";
+
+const project: ProjectConfig = {
+  systemPrompt: SYSTEM_PROMPT,
+  getResponseModeInstruction,
+  allTools: ALL_TOOLS,
+  writeToolNames: WRITE_TOOL_NAMES,
+  executeReadTool,
+  executeWriteTool,
+  getConfig,
+};
+
+export function setupCopilot(app: Express): void {
+  mountCopilot(app, project);
+}
+```
+
+#### Step 7A: Mount on Existing Server
+
+Find the app's server entry point and add one line:
+
+**Express:**
+```typescript
+import { setupCopilot } from "./copilot";
+// ... after app.use(express.json()) and CORS setup ...
+setupCopilot(app);
+```
+
+**NestJS:** Create a CopilotModule or add to `main.ts`:
+```typescript
+import { setupCopilot } from "./copilot";
+const app = await NestFactory.create(AppModule);
+setupCopilot(app.getHttpAdapter().getInstance());
+```
+
+Add copilot env vars to the app's `.env`:
+```
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+# LLM_MODEL=gpt-4.1-mini  (optional override)
+```
+
+**No separate `ALLOWED_ORIGINS` needed** — the copilot runs on the same origin as the app.
+
+#### Remaining Steps (Built-in)
+
+Steps 3-6 (frontend scaffold, dark mode, layout, config) are the same as standalone mode. Skip to those steps below.
+
+Step 8 verification: start only ONE server (`npm start` or `npm run dev`). Test endpoints at the app's own port:
+```bash
+curl http://localhost:{APP_PORT}/api/copilot/health
+```
+
+---
+
+### Path B — Standalone Mode
+
+#### Step 1B: Fork, Clone, and Set Up copilot-engine
 
 Each application gets its own fork — this ensures one-to-one isolation and lets you customize tools, prompts, and executors independently.
 
@@ -330,15 +487,51 @@ cp ../copilot-engine/.claude/skills/qa-integration.md .claude/skills/qa-integrat
 
 ### Step 9: Summary — What Was Done
 
-After completing all steps, output this summary so the developer knows what was created:
+After completing all steps, output this summary so the developer knows what was created.
 
+**For Built-in mode:**
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  ✅  AI Copilot Integration Complete
+  ✅  AI Copilot Integration Complete (Built-in)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  Mode:          Built-in (same server, same port)
   LLM Provider:  {provider} ({model})
-  Engine:        ../copilot-engine/ (port {PORT})
+  Copilot files: src/copilot/
+  Frontend:      {n} components + {n} services created
+
+  Engine files in src/copilot/:
+    engine/          (agentic loop, providers, SSE streaming)
+    auth/            (token extraction middleware)
+    mount.ts         (mountCopilot function)
+    system-prompt.ts
+    tools.ts         ({n} READ + {n} WRITE tools)
+    tool-executor.ts
+    config.ts
+    index.ts         (setupCopilot barrel export)
+
+  Server integration:
+    {server-file}: import { setupCopilot } from "./copilot"
+
+  To start:
+    npm start  (or your app's dev command — one process)
+
+  To verify:
+    Run /qa-integration from Claude Code in this directory
+
+  Reference repo: ../copilot-engine/ (for updates: git pull upstream master)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**For Standalone mode:**
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✅  AI Copilot Integration Complete (Standalone)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Mode:          Standalone (port {PORT})
+  LLM Provider:  {provider} ({model})
+  Engine:        ../copilot-engine/
   Project:       copilot-engine/projects/{app-name}/
   Frontend:      {n} components + {n} services created
 
