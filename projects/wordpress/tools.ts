@@ -48,8 +48,19 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "get_page",
+    description: "Get a single WordPress page by ID. Returns full content including raw block markup for editing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "Page ID" },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "list_pages",
-    description: "List WordPress pages with optional filters.",
+    description: "List WordPress pages (returns IDs, titles, and status — use get_page to read full content).",
     input_schema: {
       type: "object",
       properties: {
@@ -154,6 +165,24 @@ export const READ_TOOLS: Tool[] = [
     description: "List WordPress navigation menus and their locations.",
     input_schema: { type: "object", properties: {}, required: [] },
   },
+
+  // ── Patterns ──
+  {
+    name: "list_patterns",
+    description:
+      "List available WordPress block patterns in the theme. Each pattern is a pre-built section (hero, CTA, services, testimonials, pricing, etc.) that can be assembled into professional pages using the build_page tool. Returns pattern slugs, titles, categories, descriptions, and available content slots.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: {
+          type: "string",
+          description:
+            "Filter by category: banner, call-to-action, services, testimonials, pricing, text, gallery, footer, header, featured",
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ─── WRITE Tools (queued for user approval) ─────────────────────────────────
@@ -168,7 +197,7 @@ export const WRITE_TOOLS: Tool[] = [
       type: "object",
       properties: {
         title: { type: "string", description: "Post title" },
-        content: { type: "string", description: "Post content (HTML or block markup)" },
+        content: { type: "string", description: "Post content in Gutenberg block markup (<!-- wp:block --> format). Use theme color/spacing presets. Include placeholder images from placehold.co when needed." },
         status: {
           type: "string",
           enum: ["publish", "draft", "pending", "private"],
@@ -197,7 +226,7 @@ export const WRITE_TOOLS: Tool[] = [
       properties: {
         id: { type: "number", description: "Post ID to update" },
         title: { type: "string", description: "New title" },
-        content: { type: "string", description: "New content" },
+        content: { type: "string", description: "New content in Gutenberg block markup (<!-- wp:block --> format). Use theme color/spacing presets." },
         status: { type: "string", description: "New status: publish, draft, pending, private, trash" },
         categories: { type: "array", items: { type: "number" }, description: "Category IDs" },
         tags: { type: "array", items: { type: "number" }, description: "Tag IDs" },
@@ -224,11 +253,27 @@ export const WRITE_TOOLS: Tool[] = [
       type: "object",
       properties: {
         title: { type: "string", description: "Page title" },
-        content: { type: "string", description: "Page content (HTML or block markup)" },
+        content: { type: "string", description: "Page content in Gutenberg block markup (<!-- wp:block --> format). Use theme color/spacing presets. Include placeholder images from placehold.co when needed." },
         status: { type: "string", enum: ["publish", "draft", "pending", "private"], description: "Page status (default: draft)" },
         parent: { type: "number", description: "Parent page ID for hierarchy" },
       },
       required: ["title", "content"],
+    },
+  },
+
+  {
+    name: "update_page",
+    description: "Update an existing WordPress page (title, content, status, etc.).",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "Page ID to update" },
+        title: { type: "string", description: "New title" },
+        content: { type: "string", description: "New page content in Gutenberg block markup (<!-- wp:block --> format). Use theme color/spacing presets. Include placeholder images from placehold.co when needed." },
+        status: { type: "string", description: "New status: publish, draft, pending, private" },
+        parent: { type: "number", description: "Parent page ID for hierarchy" },
+      },
+      required: ["id"],
     },
   },
 
@@ -319,6 +364,68 @@ export const WRITE_TOOLS: Tool[] = [
         last_name: { type: "string", description: "Last name" },
       },
       required: ["username", "email", "password"],
+    },
+  },
+
+  // ── Pattern-Based Page Builder ──
+  {
+    name: "build_page",
+    description:
+      "Create or update a WordPress page by assembling pre-built theme patterns. This is the PREFERRED way to create professional pages. Each section uses a pattern slug (from list_patterns) with custom content for its slots. The engine handles all block markup — you only provide the text and image URLs.",
+    input_schema: {
+      type: "object",
+      properties: {
+        page_id: { type: "number", description: "Page ID to update (omit to create a new page)" },
+        title: { type: "string", description: "Page title" },
+        status: { type: "string", enum: ["draft", "publish"], description: "Page status (default: draft)" },
+        sections: {
+          type: "array",
+          description: "Ordered list of sections to assemble into the page",
+          items: {
+            type: "object",
+            properties: {
+              pattern: { type: "string", description: "Pattern slug from list_patterns, e.g., 'twentytwentyfive/hero-full-width-image'" },
+              content: {
+                type: "object",
+                description: "Content overrides for pattern slots: heading_1, paragraph_1, button_1, image_1, etc. Use keys from the pattern's slots list.",
+              },
+            },
+            required: ["pattern"],
+          },
+        },
+      },
+      required: ["title", "sections"],
+    },
+  },
+
+  // ── FastGRC.ai Compliance Export ──
+  {
+    name: "export_to_fastgrc",
+    description:
+      "Export compliance audit findings to FastGRC.ai for tracking and management. Requires the user's email address. First-time users get an account created automatically. Returns a dashboard link.",
+    input_schema: {
+      type: "object",
+      properties: {
+        email: { type: "string", description: "User's email address for FastGRC.ai account" },
+        site_url: { type: "string", description: "The WordPress site URL being audited" },
+        site_name: { type: "string", description: "The WordPress site name" },
+        findings: {
+          type: "array",
+          description: "Compliance findings to upload",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string", description: "Finding title" },
+              description: { type: "string", description: "Finding description with details" },
+              severity: { type: "string", enum: ["critical", "high", "medium", "low"], description: "Severity level" },
+              category: { type: "string", description: "Category: ssl, authentication, plugins, updates, users, configuration, backup, encryption" },
+              framework: { type: "string", description: "Compliance framework: SOC2, ISO27001, NIST-CSF, HIPAA, or custom" },
+            },
+            required: ["title", "severity"],
+          },
+        },
+      },
+      required: ["email", "findings"],
     },
   },
 ];

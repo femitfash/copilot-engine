@@ -1,7 +1,7 @@
 import type { Tool, Message, ToolResult, ToolUseBlock, LLMProvider } from "./llm-types";
 import { getLLMConfig, createProvider } from "./providers";
 
-const MAX_ITERATIONS = 4;
+const MAX_ITERATIONS = 6;
 const MAX_TOOL_RESULT_CHARS = 8000;
 
 function truncateResult(result: string): string {
@@ -51,7 +51,7 @@ export async function runAgenticLoop(
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     const response = await provider.createMessage({
       model: config.model,
-      maxTokens: config.maxTokens || 4096,
+      maxTokens: config.maxTokens || 16384,
       system: systemPrompt,
       tools,
       messages,
@@ -68,6 +68,11 @@ export async function runAgenticLoop(
     const toolUseBlocks = response.content.filter(
       (b): b is ToolUseBlock => b.type === "tool_use"
     );
+
+    if (response.stopReason === "max_tokens") {
+      // Response was truncated — return what we have
+      break;
+    }
 
     if (toolUseBlocks.length === 0 || response.stopReason !== "tool_use") {
       break; // No more tool calls, we're done
@@ -88,8 +93,10 @@ export async function runAgenticLoop(
         toolResults.push({
           tool_use_id: toolCall.id,
           content:
-            "ACTION NOT YET EXECUTED. This action has been QUEUED for user approval. " +
-            "Do NOT say it was completed. Tell the user it's been queued and they can approve it.",
+            "[SYSTEM] ACTION NOT EXECUTED — QUEUED FOR USER APPROVAL. " +
+            "The action has NOT been performed yet. The user will see an Approve/Reject card in the UI. " +
+            "You MUST tell the user: \"I've queued [action] for your approval.\" " +
+            "NEVER say the action was completed, created, done, or successful.",
         });
       } else {
         // READ tool: execute immediately and feed result back
@@ -115,7 +122,15 @@ export async function runAgenticLoop(
 
     // Add assistant response + tool results to message history for next iteration
     messages.push({ role: "assistant", content: response.content });
-    messages.push({ role: "user", content: toolResults });
+    messages.push({
+      role: "user",
+      content: toolResults.map((r) => ({
+        type: "tool_result" as const,
+        tool_use_id: r.tool_use_id,
+        content: r.content,
+        ...(r.is_error ? { is_error: true } : {}),
+      })),
+    });
   }
 
   return { text: collectedText, pendingActions };

@@ -45,6 +45,7 @@ export interface LLMResponse {
 // ─── Tool Result (fed back to the LLM) ──────────────────────────────────
 
 export interface ToolResult {
+  type?: "tool_result";
   tool_use_id: string;
   content: string;
   is_error?: boolean;

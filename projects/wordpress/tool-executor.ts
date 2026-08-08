@@ -1,7 +1,11 @@
+import { getPatternCatalog, assemblePage } from "./pattern-engine";
+
 export interface ToolExecutionContext {
   userToken: string;
   config: {
     wpApiUrl: string;
+    wpPatternsDir: string;
+    wpThemeUrl: string;
     [key: string]: string;
   };
 }
@@ -22,6 +26,13 @@ async function wpApi(
   options: RequestInit,
   userToken: string
 ): Promise<string> {
+  if (!userToken || userToken.trim() === "") {
+    return JSON.stringify({
+      error: true,
+      message: "WordPress auth token is not configured. Go to Settings → Copilot in wp-admin and set your Application Password token.",
+    });
+  }
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Basic ${userToken}`,
@@ -95,13 +106,17 @@ export async function executeReadTool(
     }
 
     case "get_post":
-      return wpApi(`${api}/posts/${input.id}`, { method: "GET" }, ctx.userToken);
+      return wpApi(`${api}/posts/${input.id}?context=edit`, { method: "GET" }, ctx.userToken);
+
+    case "get_page":
+      return wpApi(`${api}/pages/${input.id}?context=edit`, { method: "GET" }, ctx.userToken);
 
     case "list_pages": {
       const q = buildQuery({
         per_page: input.per_page || 10,
         status: input.status,
         search: input.search,
+        _fields: "id,title,status,link,date,modified",
       });
       return wpApi(`${api}/pages${q}`, { method: "GET" }, ctx.userToken);
     }
@@ -154,6 +169,33 @@ export async function executeReadTool(
     case "list_menus":
       return wpApi(`${api}/menu-locations`, { method: "GET" }, ctx.userToken);
 
+    case "list_patterns": {
+      try {
+        const catalog = getPatternCatalog(
+          ctx.config.wpPatternsDir,
+          ctx.config.wpThemeUrl
+        );
+        let filtered = catalog;
+        if (input.category) {
+          const cat = String(input.category).toLowerCase();
+          filtered = catalog.filter((p) =>
+            p.categories.some((c) => c.toLowerCase().includes(cat))
+          );
+        }
+        // Return compact format to stay within 8KB
+        const compact = filtered.map((p) => ({
+          slug: p.slug,
+          title: p.title,
+          categories: p.categories,
+          description: p.description,
+          slots: p.slots.map((s) => s.key),
+        }));
+        return truncate(JSON.stringify(compact));
+      } catch (err: any) {
+        return JSON.stringify({ error: true, message: err.message });
+      }
+    }
+
     default:
       return JSON.stringify({ error: `Unknown tool: ${toolName}` });
   }
@@ -202,6 +244,15 @@ export async function executeWriteTool(
         ctx.userToken
       );
 
+    case "update_page": {
+      const { id: pageId, ...pageData } = input;
+      return wpApi(
+        `${api}/pages/${pageId}`,
+        { method: "POST", body: JSON.stringify(pageData) },
+        ctx.userToken
+      );
+    }
+
     case "create_category":
       return wpApi(
         `${api}/categories`,
@@ -245,6 +296,64 @@ export async function executeWriteTool(
         { method: "POST", body: JSON.stringify(input) },
         ctx.userToken
       );
+
+    case "export_to_fastgrc": {
+      const fastgrcUrl = ctx.config.fastgrcApiUrl || "https://www.fastgrc.ai";
+      try {
+        const res = await fetch(`${fastgrcUrl}/api/v1/wordpress-signup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: input.email,
+            findings: input.findings,
+            site_url: input.site_url || ctx.config.wpApiUrl,
+            site_name: input.site_name || "WordPress Site",
+          }),
+        });
+        const data = (await res.json()) as Record<string, unknown>;
+        if (!res.ok) {
+          throw new Error((data.error as string) || `FastGRC API returned ${res.status}`);
+        }
+        return JSON.stringify(data);
+      } catch (err: any) {
+        throw new Error(`FastGRC export failed: ${err.message}`);
+      }
+    }
+
+    case "build_page": {
+      try {
+        const sections = (input.sections as Array<{ pattern: string; content?: Record<string, string> }>) || [];
+        const pageContent = assemblePage(
+          ctx.config.wpPatternsDir,
+          ctx.config.wpThemeUrl,
+          sections
+        );
+
+        const pageData: Record<string, unknown> = {
+          title: input.title,
+          content: pageContent,
+          status: input.status || "draft",
+        };
+
+        if (input.page_id) {
+          // Update existing page
+          return wpApi(
+            `${api}/pages/${input.page_id}`,
+            { method: "POST", body: JSON.stringify(pageData) },
+            ctx.userToken
+          );
+        } else {
+          // Create new page
+          return wpApi(
+            `${api}/pages`,
+            { method: "POST", body: JSON.stringify(pageData) },
+            ctx.userToken
+          );
+        }
+      } catch (err: any) {
+        throw new Error(`build_page failed: ${err.message}`);
+      }
+    }
 
     default:
       throw new Error(`Unknown write tool: ${toolName}`);

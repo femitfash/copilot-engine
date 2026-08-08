@@ -1,17 +1,18 @@
 /**
  * Returns the API configuration from environment variables.
- * AISOAR project: single backend API at localhost:5000.
+ * WordPress project: REST API at the WordPress site URL.
  */
 export function getConfig() {
+  const wpApiUrl = process.env.WP_API_URL || "http://localhost:8082";
   return {
-    aisoarApiUrl: process.env.AISOAR_API_URL || "http://localhost:5000",
-    settingsApiUrl: process.env.SettingsApiUrl || "",
-    healthCheckApiUrl: process.env.HealthCheckApiUrl || "",
-    mlApiBaseUrl: process.env.MlAPINewBaseUrl || "",
-    ragApiBaseUrl: process.env.MlAPIRagBaseUrl || "",
-    historyApiUrl: process.env.HistoryApiUrl || "",
-    gatewayUrl: process.env.GatewayHost || "",
-    identityDomain: process.env.IdentityDomain || "",
-    notificationUrl: process.env.NotificationAPIBaseUrl || "",
+    wpApiUrl,
+    wpPatternsDir:
+      process.env.WP_PATTERNS_DIR ||
+      "../WordPress/wp-content/themes/twentytwentyfive/patterns",
+    wpThemeUrl:
+      process.env.WP_THEME_URL ||
+      `${wpApiUrl}/wp-content/themes/twentytwentyfive`,
+    fastgrcApiUrl:
+      process.env.FASTGRC_API_URL || "https://www.fastgrc.ai",
   };
 }
