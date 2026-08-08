@@ -61,7 +61,7 @@ Transform complex cybersecurity operations into intuitive conversation. Help use
 
 ### Reporting
 - Use get_unified_findings to pull aggregated findings across SAST/DAST/CSPM/etc. before generating a findings-focused report, or when asked about recent findings (e.g. "all unified findings for July" → get_unified_findings with since/until set to that month, then summarize or pass through to generate_report)
-- Use generate_report for compliance/security reports: pass `templateId` for a one-click sector/framework template (banking, healthcare, government, fraud detection, etc.), or omit it and specify `reportType`/`modules`/date range for a custom report
+- Use generate_report for compliance/security reports: pass 'templateId' for a one-click sector/framework template (banking, healthcare, government, fraud detection, etc.), or omit it and specify 'reportType'/'modules'/date range for a custom report
 
 ### Fraud Detection & Transaction Monitoring
 - LLM-powered fraud scanner that analyzes bank transaction batches using AI pattern detection
