@@ -263,6 +263,29 @@ export const READ_TOOLS: Tool[] = [
       required: [],
     },
   },
+  {
+    name: "get_unified_findings",
+    description:
+      "Get unified security findings aggregated across all scan engines (SAST, DAST, CSPM, etc.). Supports filtering by severity, type, status, and date range. " +
+      "Use this before generating a findings-focused report, or when asked about recent findings, e.g. 'all unified findings for July'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        severity: {
+          type: "string",
+          enum: ["critical", "high", "medium", "low", "info"],
+          description: "Filter by severity level",
+        },
+        findingType: { type: "string", description: "Filter by finding type (e.g., 'vulnerability', 'misconfiguration')" },
+        status: { type: "string", description: "Filter by status (e.g., 'open', 'resolved')" },
+        executorType: { type: "string", description: "Filter by the scan engine that produced the finding (e.g., 'sast', 'dast', 'cspm')" },
+        since: { type: "string", description: "Only findings on/after this date, ISO format (e.g. '2026-07-01')" },
+        until: { type: "string", description: "Only findings on/before this date, ISO format (e.g. '2026-07-31')" },
+        limit: { type: "number", description: "Max records to return (default 100, capped at 500)" },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ─── WRITE Tools (queued for user approval) ─────────────────────────────────
@@ -337,12 +360,11 @@ export const WRITE_TOOLS: Tool[] = [
   {
     name: "run_sast_scan",
     description:
-      "Trigger a Static Application Security Testing (SAST) scan on a target",
+      "Trigger a Static Application Security Testing (SAST) scan on a code repository or path",
     input_schema: {
       type: "object" as const,
       properties: {
-        target: { type: "string", description: "Target repository or code path" },
-        language: { type: "string", description: "Programming language to scan" },
+        target: { type: "string", description: "Target repository URL or code path to scan" },
       },
       required: ["target"],
     },
@@ -350,18 +372,77 @@ export const WRITE_TOOLS: Tool[] = [
   {
     name: "run_dast_scan",
     description:
-      "Trigger a Dynamic Application Security Testing (DAST) scan against a URL",
+      "Trigger a Dynamic Application Security Testing (DAST) scan against a live URL",
     input_schema: {
       type: "object" as const,
       properties: {
-        targetUrl: { type: "string", description: "URL to scan" },
+        targetUrl: { type: "string", description: "URL to scan (e.g. 'https://example.com')" },
         scanType: {
           type: "string",
           enum: ["quick", "full", "api"],
-          description: "Scan depth",
+          description: "Scan depth (default 'quick')",
         },
       },
       required: ["targetUrl"],
+    },
+  },
+  {
+    name: "generate_report",
+    description:
+      "Generate a compliance/security report. Use `templateId` to apply a default one-click sector/framework template (e.g. banking, healthcare, government, fraud detection) which prefills the relevant frameworks and data modules, " +
+      "or omit it and build a custom report by specifying `reportType`, `modules`, and a date range yourself. " +
+      "Example: 'generate a report for all unified findings for July' -> modules: ['unified_findings'], dateRangeStart: '2026-07-01', dateRangeEnd: '2026-07-31'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        title: { type: "string", description: "Report title" },
+        templateId: {
+          type: "string",
+          enum: [
+            "executive-risk",
+            "banking-financial",
+            "health-hipaa",
+            "government-fisma",
+            "cmmc-2",
+            "energy-nerc-cip",
+            "eu-ai-compliance",
+            "japan-ai-compliance",
+            "brazil-ai-compliance",
+            "fraud-detection",
+            "aml-kyc",
+            "insurance",
+            "soc2",
+            "iso42001",
+          ],
+          description: "Optional default sector/industry/framework template. Prefills frameworks and modules for a one-click report. Omit for a fully custom report.",
+        },
+        reportType: {
+          type: "string",
+          enum: [
+            "executive",
+            "technical",
+            "compliance",
+            "security_posture",
+            "vulnerability_assessment",
+            "risk_assessment",
+            "incident_summary",
+            "threat_intelligence",
+          ],
+          description: "General report category. Used to build a custom report when templateId is omitted, or to override the template's default.",
+        },
+        modules: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["poam", "vulnerabilities", "incidents", "risks", "suppliers", "threatIntel", "cspm", "unified_findings"],
+          },
+          description: "Data modules to include in the report",
+        },
+        dateRangeStart: { type: "string", description: "Start date for included data, ISO format (e.g. '2026-07-01')" },
+        dateRangeEnd: { type: "string", description: "End date for included data, ISO format (e.g. '2026-07-31')" },
+        query: { type: "string", description: "Freeform focus for the report content, e.g. 'all unified findings for July' or 'focus on critical risks'" },
+      },
+      required: [],
     },
   },
   {

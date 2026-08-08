@@ -1,10 +1,76 @@
 export interface ToolExecutionContext {
+  /** Raw `Cookie` header, forwarded for READ-tool HTTP calls only. */
   userToken: string;
+  identity?: {
+    userId?: string;
+    userEmail?: string;
+    userRole?: string;
+    profileId?: string;
+  };
+  toolCallId?: string;
   config: {
     aisoarApiUrl: string;
-    [key: string]: string;
+    /**
+     * Injected by AISOAR's mount wiring so WRITE tools that map to a governed
+     * tool (sast.run, dast.run, report.generate) call it in-process instead of
+     * round-tripping over HTTP. Absent for other copilot-engine consumers
+     * (wordpress/zerotrusted), which have no governed executor to inject.
+     */
+    executeGovernedTool?: (
+      toolId: string,
+      params: Record<string, unknown>,
+      ctx: Record<string, unknown>
+    ) => Promise<unknown>;
+    [key: string]: unknown;
   };
 }
+
+const COPILOT_AGENT_ID = "agent.command_center_orchestrator";
+const COPILOT_AGENT_NAME = "Command Center Copilot";
+
+function buildGovernedCtx(ctx: ToolExecutionContext, toolName: string): Record<string, unknown> {
+  return {
+    agentId: COPILOT_AGENT_ID,
+    agentName: COPILOT_AGENT_NAME,
+    userId: ctx.identity?.userId,
+    profileId: ctx.identity?.profileId,
+    taskType: "copilot_tool_execute",
+    description: `Copilot: ${toolName}`,
+  };
+}
+
+function requireGovernedExecutor(
+  ctx: ToolExecutionContext
+): NonNullable<ToolExecutionContext["config"]["executeGovernedTool"]> {
+  if (!ctx.config.executeGovernedTool) {
+    throw new Error(
+      "Governed tool executor not configured — this write tool requires AISOAR's mount wiring to inject config.executeGovernedTool"
+    );
+  }
+  return ctx.config.executeGovernedTool;
+}
+
+// Cross-repo duplicate of client/src/pages/reports.tsx's SECTOR_REPORT_TEMPLATES
+// (copilot-engine can't import AISOAR's client code). Keep ids in sync.
+const SECTOR_REPORT_TEMPLATES: Record<
+  string,
+  { label: string; frameworks: string[]; modules: string[]; reportType: string }
+> = {
+  "executive-risk": { label: "Executive Risk Report", frameworks: ["NIST CSF", "ISO 31000"], modules: ["risks", "vulnerabilities", "incidents", "threatIntel"], reportType: "executive" },
+  "banking-financial": { label: "Banking & Financial Services", frameworks: ["PCI DSS", "SOX", "GLBA"], modules: ["risks", "vulnerabilities", "suppliers", "incidents"], reportType: "compliance" },
+  "health-hipaa": { label: "Healthcare / HIPAA", frameworks: ["HIPAA", "HITECH", "NIST SP 800-66"], modules: ["risks", "vulnerabilities", "poam", "incidents"], reportType: "compliance" },
+  "government-fisma": { label: "Government / FISMA", frameworks: ["FISMA", "NIST SP 800-53", "FedRAMP"], modules: ["poam", "risks", "vulnerabilities", "incidents"], reportType: "compliance" },
+  "cmmc-2": { label: "CMMC 2.0", frameworks: ["CMMC 2.0", "NIST SP 800-171", "NIST SP 800-172"], modules: ["poam", "risks", "vulnerabilities", "cspm"], reportType: "compliance" },
+  "energy-nerc-cip": { label: "Energy / NERC CIP", frameworks: ["NERC CIP", "ICS-CERT"], modules: ["vulnerabilities", "risks", "incidents", "threatIntel"], reportType: "compliance" },
+  "eu-ai-compliance": { label: "EU AI Compliance", frameworks: ["EU AI Act", "GDPR", "ISO 42001"], modules: ["risks", "vulnerabilities", "poam"], reportType: "compliance" },
+  "japan-ai-compliance": { label: "Japan AI Compliance", frameworks: ["APPI", "Japan AI Guidelines"], modules: ["risks", "vulnerabilities", "poam"], reportType: "compliance" },
+  "brazil-ai-compliance": { label: "Brazil AI Compliance", frameworks: ["LGPD", "Brazil AI Framework"], modules: ["risks", "vulnerabilities", "poam"], reportType: "compliance" },
+  "fraud-detection": { label: "Fraud Detection", frameworks: ["ISO 27001", "PCI DSS"], modules: ["incidents", "threatIntel", "vulnerabilities", "risks"], reportType: "security_posture" },
+  "aml-kyc": { label: "AML / KYC", frameworks: ["BSA/AML", "FATF", "FinCEN"], modules: ["risks", "incidents", "suppliers", "threatIntel"], reportType: "compliance" },
+  "insurance": { label: "Insurance Compliance", frameworks: ["NAIC #668", "NY DFS 23 NYCRR 500", "GLBA"], modules: ["risks", "vulnerabilities", "suppliers", "incidents"], reportType: "compliance" },
+  "soc2": { label: "SOC 2 Type II", frameworks: ["AICPA TSC", "CC1-CC9", "SOC 2 Type II"], modules: ["risks", "vulnerabilities", "poam", "incidents"], reportType: "compliance" },
+  "iso42001": { label: "ISO/IEC 42001 AI Management", frameworks: ["ISO/IEC 42001", "NIST AI RMF", "ISO 27001"], modules: ["risks", "vulnerabilities", "poam", "threatIntel"], reportType: "compliance" },
+};
 
 const MAX_RESULT_SIZE = 8000; // Truncate to prevent token overflow
 
@@ -179,6 +245,22 @@ export async function executeReadTool(
       return apiCall(`${base}/api/fraud/alert-feedback/stats`, { method: "GET" }, cookies);
     }
 
+    case "get_unified_findings": {
+      const params = new URLSearchParams();
+      for (const key of ["severity", "findingType", "status", "executorType", "since", "until", "limit"] as const) {
+        const value = input[key];
+        if (value !== undefined && value !== null && value !== "") {
+          params.set(key, String(value));
+        }
+      }
+      const qs = params.toString();
+      return apiCall(
+        `${base}/api/unified-findings${qs ? `?${qs}` : ""}`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
     default:
       return JSON.stringify({ error: `Unknown tool: ${toolName}` });
   }
@@ -247,18 +329,56 @@ export async function executeWriteTool(
     }
 
     case "run_sast_scan": {
-      return apiCall(
-        `${base}/api/sast/scan`,
-        { method: "POST", body: JSON.stringify(input) },
-        cookies
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      return executeGovernedTool(
+        "sast.run",
+        { target: input.target },
+        buildGovernedCtx(ctx, toolName)
       );
     }
 
     case "run_dast_scan": {
-      return apiCall(
-        `${base}/api/dast/scan`,
-        { method: "POST", body: JSON.stringify(input) },
-        cookies
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      return executeGovernedTool(
+        "dast.run",
+        { targetUrl: input.targetUrl, scanType: input.scanType || "quick" },
+        buildGovernedCtx(ctx, toolName)
+      );
+    }
+
+    case "generate_report": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      const templateId = input.templateId as string | undefined;
+      const template = templateId ? SECTOR_REPORT_TEMPLATES[templateId] : undefined;
+      const reportType = (input.reportType as string) || template?.reportType || "security_posture";
+      const modules = (input.modules as string[] | undefined) ?? template?.modules;
+      const dateRangeStart = input.dateRangeStart as string | undefined;
+      const dateRangeEnd = input.dateRangeEnd as string | undefined;
+
+      const queryParts: string[] = [];
+      if (template) {
+        queryParts.push(`${template.label} report covering frameworks: ${template.frameworks.join(", ")}`);
+      }
+      if (modules?.length) {
+        queryParts.push(`focused on data modules: ${modules.join(", ")}`);
+      }
+      if (dateRangeStart || dateRangeEnd) {
+        queryParts.push(`for the period ${dateRangeStart ?? "earliest available"} to ${dateRangeEnd ?? "now"}`);
+      }
+      if (input.query) {
+        queryParts.push(input.query as string);
+      }
+      if (input.title) {
+        queryParts.push(`titled "${input.title as string}"`);
+      }
+      const query = queryParts.length
+        ? queryParts.join("; ")
+        : "security findings risks evidence recommendations";
+
+      return executeGovernedTool(
+        "report.generate",
+        { query, reportType },
+        buildGovernedCtx(ctx, toolName)
       );
     }
 

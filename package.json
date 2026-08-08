@@ -2,7 +2,34 @@
   "name": "copilot-engine",
   "version": "1.1.0",
   "description": "Reusable, LLM-agnostic backend for building AI copilots with agentic tool use, SSE streaming, and action approval workflows. Supports Anthropic Claude and OpenAI GPT.",
-  "main": "dist/index.js",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./mount": {
+      "types": "./dist/src/mount.d.ts",
+      "default": "./dist/src/mount.js"
+    },
+    "./projects/aisoar/system-prompt": {
+      "types": "./dist/projects/aisoar/system-prompt.d.ts",
+      "default": "./dist/projects/aisoar/system-prompt.js"
+    },
+    "./projects/aisoar/tools": {
+      "types": "./dist/projects/aisoar/tools.d.ts",
+      "default": "./dist/projects/aisoar/tools.js"
+    },
+    "./projects/aisoar/tool-executor": {
+      "types": "./dist/projects/aisoar/tool-executor.d.ts",
+      "default": "./dist/projects/aisoar/tool-executor.js"
+    },
+    "./projects/aisoar/config": {
+      "types": "./dist/projects/aisoar/config.d.ts",
+      "default": "./dist/projects/aisoar/config.js"
+    }
+  },
   "author": "femitfash",
   "license": "MIT",
   "repository": {
@@ -33,7 +60,7 @@
     "dev": "ts-node src/index.ts",
     "build": "tsc",
     "prestart": "npm run build",
-    "start": "node dist/index.js"
+    "start": "node dist/src/index.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

@@ -43,7 +43,24 @@ export function createCopilotRoute(project: ProjectConfig): Router {
       const fullPrompt = project.systemPrompt + contextBlock + modeInstruction;
 
       const config = project.getConfig();
-      const ctx = { userToken, config };
+      const identity = (req as any).aisoarIdentity;
+      const ctx = { userToken, identity, config };
+
+      // Override LLM settings from client headers (set via plugin settings page)
+      // TODO: mutating process.env per-request is not safe for concurrent requests
+      // with different overrides (shared across the whole process). Defer fixing.
+      const llmProvider = req.headers["x-copilot-llm-provider"] as string;
+      const llmModel = req.headers["x-copilot-llm-model"] as string;
+      const llmApiKey = req.headers["x-copilot-llm-api-key"] as string;
+      if (llmProvider) process.env.LLM_PROVIDER = llmProvider;
+      if (llmModel) process.env.LLM_MODEL = llmModel;
+      if (llmApiKey) {
+        if (llmProvider === "openai") {
+          process.env.OPENAI_API_KEY = llmApiKey;
+        } else {
+          process.env.ANTHROPIC_API_KEY = llmApiKey;
+        }
+      }
 
       // Let client know we're processing
       res.write(`data: ${JSON.stringify({ type: "text", text: "" })}\n\n`);
@@ -65,11 +82,17 @@ export function createCopilotRoute(project: ProjectConfig): Router {
       // Send done event with pending actions
       sendDone(res, result.pendingActions);
     } catch (err: any) {
-      console.error("Copilot error:", err.message || err);
-      const userMessage =
-        err.status === 400 && err.message?.includes("too long")
-          ? "The request was too large. Please try a shorter message or clear the conversation."
-          : err.message || "Internal server error";
+      console.error("Copilot error:", err.status || "", err.message || err);
+      let userMessage = "Internal server error";
+      if (err.status === 400) {
+        userMessage = "The request was too large. Please clear the conversation and try again.";
+      } else if (err.status === 429) {
+        userMessage = "Rate limited — please wait a moment and try again.";
+      } else if (err.status === 401 || err.status === 403) {
+        userMessage = "LLM API key is invalid or expired. Check your .env configuration.";
+      } else if (err.message) {
+        userMessage = err.message;
+      }
       sendError(res, userMessage);
     } finally {
       clearTimeout(timeout);
@@ -102,7 +125,8 @@ export function createExecuteRoute(project: ProjectConfig): Router {
       }
 
       const config = project.getConfig();
-      const ctx = { userToken, config };
+      const identity = (req as any).aisoarIdentity;
+      const ctx = { userToken, identity, toolCallId, config };
 
       const result = await project.executeWriteTool(name, input, ctx);
 

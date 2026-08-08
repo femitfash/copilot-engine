@@ -45,14 +45,20 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "copilot-engine", mode: "standalone" });
 });
 
-app.listen(PORT, () => {
-  console.log(`
+// Only boot the standalone server when this file is run directly (`node dist/src/index.js`).
+// When imported as a library (e.g. AISOAR's mountCopilot() usage), this side effect is skipped.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`
 ╔══════════════════════════════════════════════╗
 ║  Copilot Engine — http://localhost:${PORT}      ║
 ║  Mode: standalone                            ║
 ║  Health check: GET /health                   ║
 ╚══════════════════════════════════════════════╝
 `);
-});
+  });
+}
 
 export default app;
+export { mountCopilot } from "./mount";
+export type { ProjectConfig } from "./engine/project-config";
