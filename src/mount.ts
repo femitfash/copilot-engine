@@ -86,6 +86,6 @@ export function mountCopilot(
   });
 }
 
-export type { ProjectConfig } from "./engine/project-config";
-export type { Tool } from "./engine/llm-types";
+export type { ProjectConfig, LlmResolution } from "./engine/project-config";
+export type { Tool, LLMConfig } from "./engine/llm-types";
 export type { PendingAction, AgenticResult } from "./engine/agentic-loop";

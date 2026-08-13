@@ -1,4 +1,4 @@
-import type { Tool, Message, ToolResult, ToolUseBlock, LLMProvider } from "./llm-types";
+import type { Tool, Message, ToolResult, ToolUseBlock, LLMProvider, LLMConfig } from "./llm-types";
 import { getLLMConfig, createProvider } from "./providers";
 
 const MAX_ITERATIONS = 6;
@@ -32,9 +32,10 @@ export async function runAgenticLoop(
     input: Record<string, unknown>,
     ctx: any
   ) => Promise<string>,
-  ctx: any
+  ctx: any,
+  llmConfig?: LLMConfig
 ): Promise<AgenticResult> {
-  const config = getLLMConfig();
+  const config = llmConfig ?? getLLMConfig();
   const provider: LLMProvider = createProvider(config);
   const pendingActions: PendingAction[] = [];
   let collectedText = "";

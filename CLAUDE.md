@@ -37,7 +37,7 @@ Key entry points:
 - **Runtime**: Node.js ≥ 18.0.0 (native fetch required)
 - **Language**: TypeScript (strict mode)
 - **Framework**: Express 4
-- **AI**: LLM-agnostic — @anthropic-ai/sdk + openai SDK. Default: Anthropic `claude-sonnet-4-20250514`. Set `LLM_PROVIDER=openai` + `OPENAI_API_KEY` for GPT models.
+- **AI**: LLM-agnostic — @anthropic-ai/sdk + openai SDK. Default: Anthropic `claude-sonnet-4-20250514`. Host apps can implement `ProjectConfig.resolveLlmConfig()` to source credentials from their own per-tenant store; env vars (`LLM_PROVIDER`/`OPENAI_API_KEY`/etc., see @claude/architecture.md) are a legacy fallback for projects that don't.
 - **Streaming**: Server-Sent Events (SSE)
 - **Auth**: Bearer token / session cookies / x-copilot-auth dev header
 

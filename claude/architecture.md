@@ -93,10 +93,23 @@ To add a new project:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `LLM_PROVIDER` | `anthropic` | LLM provider: `anthropic` or `openai` |
-| `LLM_MODEL` | per-provider | Model override (e.g., `gpt-4.1-mini`) |
-| `ANTHROPIC_API_KEY` | (required if anthropic) | Anthropic API key |
-| `OPENAI_API_KEY` | (required if openai) | OpenAI API key |
+| `LLM_PROVIDER` | `anthropic` | LLM provider: `anthropic` or `openai` — legacy fallback only, see below |
+| `LLM_MODEL` | per-provider | Model override (e.g., `gpt-4.1-mini`) — legacy fallback only |
+| `ANTHROPIC_API_KEY` | (none) | Anthropic API key — legacy fallback only |
+| `OPENAI_API_KEY` | (none) | OpenAI API key — legacy fallback only |
 | `PORT` | `3100` | Server port |
 | `ALLOWED_ORIGINS` | `http://localhost:4000` | CORS whitelist (comma-separated) |
 | `AISOAR_API_URL` | `http://localhost:5000` | AISOAR backend URL |
+
+### LLM credential resolution
+
+A host app can implement `ProjectConfig.resolveLlmConfig(ctx)` to source the
+`LLMConfig` (provider/model/key) per-request from its own credential store
+(e.g. AISOAR resolves it from its DB-backed, per-tenant `aiProviders` table —
+see `server/copilot/aisoarProjectConfig.ts` in the consuming app) instead of
+process env vars. When `resolveLlmConfig` is absent (`projects/wordpress`,
+`projects/example`), the engine falls back to the env vars above for backward
+compatibility. `resolveLlmConfig` returning `{ status: "not_configured" }`
+short-circuits the request with an SSE `error` event
+(`code: "llm_not_configured"`) before any LLM call is made — no env vars are
+required for a fresh deployment.

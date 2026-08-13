@@ -42,7 +42,9 @@ export function sendDone(res: Response, pendingActions: PendingAction[]): void {
 /**
  * Send an error event and end the response.
  */
-export function sendError(res: Response, error: string): void {
-  res.write(`data: ${JSON.stringify({ type: "error", error })}\n\n`);
+export function sendError(res: Response, error: string, code?: string): void {
+  res.write(
+    `data: ${JSON.stringify({ type: "error", error, ...(code ? { code } : {}) })}\n\n`
+  );
   res.end();
 }

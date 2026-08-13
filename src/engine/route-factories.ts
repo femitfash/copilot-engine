@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { runAgenticLoop } from "./agentic-loop";
 import { streamWords, sendDone, sendError } from "./sse-stream";
 import type { ProjectConfig } from "./project-config";
+import type { LLMConfig } from "./llm-types";
 
 /**
  * Create the SSE copilot chat route.
@@ -46,20 +47,24 @@ export function createCopilotRoute(project: ProjectConfig): Router {
       const identity = (req as any).aisoarIdentity;
       const ctx = { userToken, identity, config };
 
-      // Override LLM settings from client headers (set via plugin settings page)
-      // TODO: mutating process.env per-request is not safe for concurrent requests
-      // with different overrides (shared across the whole process). Defer fixing.
-      const llmProvider = req.headers["x-copilot-llm-provider"] as string;
-      const llmModel = req.headers["x-copilot-llm-model"] as string;
-      const llmApiKey = req.headers["x-copilot-llm-api-key"] as string;
-      if (llmProvider) process.env.LLM_PROVIDER = llmProvider;
-      if (llmModel) process.env.LLM_MODEL = llmModel;
-      if (llmApiKey) {
-        if (llmProvider === "openai") {
-          process.env.OPENAI_API_KEY = llmApiKey;
-        } else {
-          process.env.ANTHROPIC_API_KEY = llmApiKey;
+      let llmConfig: LLMConfig | undefined;
+      if (project.resolveLlmConfig) {
+        const resolution = await project.resolveLlmConfig({
+          identity,
+          headers: {
+            "x-copilot-provider-id": req.headers["x-copilot-provider-id"] as string | undefined,
+          },
+        });
+        if (resolution.status === "not_configured") {
+          clearTimeout(timeout);
+          sendError(
+            res,
+            "No LLM provider is configured for this workspace.",
+            "llm_not_configured"
+          );
+          return;
         }
+        llmConfig = resolution.config;
       }
 
       // Let client know we're processing
@@ -73,7 +78,8 @@ export function createCopilotRoute(project: ProjectConfig): Router {
         project.allTools,
         project.writeToolNames,
         project.executeReadTool,
-        ctx
+        ctx,
+        llmConfig
       );
 
       // Stream text word-by-word
@@ -84,16 +90,18 @@ export function createCopilotRoute(project: ProjectConfig): Router {
     } catch (err: any) {
       console.error("Copilot error:", err.status || "", err.message || err);
       let userMessage = "Internal server error";
+      let code: string | undefined;
       if (err.status === 400) {
         userMessage = "The request was too large. Please clear the conversation and try again.";
       } else if (err.status === 429) {
         userMessage = "Rate limited — please wait a moment and try again.";
       } else if (err.status === 401 || err.status === 403) {
-        userMessage = "LLM API key is invalid or expired. Check your .env configuration.";
+        userMessage = "LLM API key is invalid or expired.";
+        code = "llm_auth_failed";
       } else if (err.message) {
         userMessage = err.message;
       }
-      sendError(res, userMessage);
+      sendError(res, userMessage, code);
     } finally {
       clearTimeout(timeout);
     }

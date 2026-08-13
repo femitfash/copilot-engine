@@ -1,4 +1,8 @@
-import type { Tool } from "./llm-types";
+import type { LLMConfig, Tool } from "./llm-types";
+
+export type LlmResolution =
+  | { status: "ok"; config: LLMConfig }
+  | { status: "not_configured" };
 
 /**
  * Project-specific configuration injected into copilot routes.
@@ -35,4 +39,16 @@ export interface ProjectConfig {
 
   /** Returns project-specific API configuration (URLs, etc.) */
   getConfig: () => Record<string, unknown>;
+
+  /**
+   * Resolves the LLM provider/model/key to use for this request.
+   * Optional — when omitted, the engine falls back to env-var-based
+   * `getLLMConfig()` for backward compatibility with projects that don't
+   * have a per-tenant credential store (e.g. `projects/wordpress`,
+   * `projects/example`).
+   */
+  resolveLlmConfig?: (ctx: {
+    identity: any;
+    headers: Record<string, string | undefined>;
+  }) => Promise<LlmResolution>;
 }
