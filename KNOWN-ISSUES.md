@@ -24,10 +24,12 @@ function truncateResult(result: string): string {
 
 **Also**: Truncate the context block injected into the system prompt (cap at ~2000 chars).
 
+**Fixed**: `agentic-loop.ts` now caps replayed history at `MAX_HISTORY_MESSAGES` (20) via `splitHistoryForSummary` in `history-summarizer.ts`. Anything older than the last 20 messages is condensed into a short summary (`summarizeOlderHistory`, a single non-agentic LLM call) and injected as a synthetic leading user message, instead of being dropped outright.
+
 **Checklist**:
-- [ ] All `executeReadTool` results are truncated before pushing to `toolResults`
-- [ ] Context JSON injected into system prompt is capped
-- [ ] Conversation history passed from frontend is limited (e.g., last 20 messages)
+- [x] All `executeReadTool` results are truncated before pushing to `toolResults`
+- [x] Context JSON injected into system prompt is capped
+- [x] Conversation history passed from frontend is limited (last 20 messages, older history summarized rather than discarded)
 
 ---
 
