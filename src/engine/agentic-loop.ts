@@ -1,8 +1,10 @@
 import type { Tool, Message, ToolResult, ToolUseBlock, LLMProvider, LLMConfig } from "./llm-types";
 import { getLLMConfig, createProvider } from "./providers";
+import { splitHistoryForSummary, summarizeOlderHistory } from "./history-summarizer";
 
 const MAX_ITERATIONS = 6;
 const MAX_TOOL_RESULT_CHARS = 8000;
+const MAX_HISTORY_MESSAGES = 20;
 
 function truncateResult(result: string): string {
   if (result.length <= MAX_TOOL_RESULT_CHARS) return result;
@@ -40,9 +42,21 @@ export async function runAgenticLoop(
   const pendingActions: PendingAction[] = [];
   let collectedText = "";
 
-  // Build messages array
+  // Build messages array — cap replayed history and summarize anything
+  // dropped so long conversations don't overflow the model's context window.
+  const { older, recent } = splitHistoryForSummary(history, MAX_HISTORY_MESSAGES);
+  const summaryMessages: Message[] = [];
+  if (older.length > 0) {
+    const summary = await summarizeOlderHistory(older, config);
+    summaryMessages.push({
+      role: "user",
+      content: `[CONVERSATION SUMMARY — earlier messages, condensed for context]\n${summary}`,
+    });
+  }
+
   const messages: Message[] = [
-    ...history.map((m) => ({
+    ...summaryMessages,
+    ...recent.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
     })),
