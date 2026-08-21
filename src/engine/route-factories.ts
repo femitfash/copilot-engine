@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { runAgenticLoop } from "./agentic-loop";
 import { streamWords, sendDone, sendError } from "./sse-stream";
+import { classifyProviderError, friendlyMessageFor } from "./error-classifier";
 import type { ProjectConfig } from "./project-config";
 import type { LLMConfig } from "./llm-types";
 
@@ -31,6 +32,8 @@ export function createCopilotRoute(project: ProjectConfig): Router {
       sendError(res, "Request timed out");
     }, 600_000);
 
+    let llmConfig: LLMConfig | undefined;
+
     try {
       const { message, conversationId, context, history, responseMode } =
         req.body;
@@ -47,7 +50,6 @@ export function createCopilotRoute(project: ProjectConfig): Router {
       const identity = (req as any).aisoarIdentity;
       const ctx = { userToken, identity, config };
 
-      let llmConfig: LLMConfig | undefined;
       if (project.resolveLlmConfig) {
         const resolution = await project.resolveLlmConfig({
           identity,
@@ -88,20 +90,12 @@ export function createCopilotRoute(project: ProjectConfig): Router {
       // Send done event with pending actions
       sendDone(res, result.pendingActions);
     } catch (err: any) {
-      console.error("Copilot error:", err.status || "", err.message || err);
-      let userMessage = "Internal server error";
-      let code: string | undefined;
-      if (err.status === 400) {
-        userMessage = "The request was too large. Please clear the conversation and try again.";
-      } else if (err.status === 429) {
-        userMessage = "Rate limited — please wait a moment and try again.";
-      } else if (err.status === 401 || err.status === 403) {
-        userMessage = "LLM API key is invalid or expired.";
-        code = "llm_auth_failed";
-      } else if (err.message) {
-        userMessage = err.message;
-      }
-      sendError(res, userMessage, code);
+      const provider = llmConfig?.provider ?? "anthropic";
+      const classified = classifyProviderError(err, provider);
+      console.error("Copilot error:", err.status || "", classified.code, classified.providerMessage);
+      const userMessage = friendlyMessageFor(classified);
+      const actionable = classified.code === "invalid_api_key" || classified.code === "insufficient_credits";
+      sendError(res, userMessage, actionable ? `llm_${classified.code}` : undefined);
     } finally {
       clearTimeout(timeout);
     }
@@ -137,6 +131,13 @@ export function createExecuteRoute(project: ProjectConfig): Router {
       const ctx = { userToken, identity, toolCallId, config };
 
       const result = await project.executeWriteTool(name, input, ctx);
+
+      const status = (result as any)?.status;
+      if (status === "blocked" || status === "approval_required") {
+        const errorMessage = (result as any)?.summary || "Action was not authorized";
+        res.status(409).json({ success: false, result, toolCallId, error: errorMessage });
+        return;
+      }
 
       res.json({ success: true, result, toolCallId });
     } catch (err: any) {

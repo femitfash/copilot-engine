@@ -619,6 +619,86 @@ export const WRITE_TOOLS: Tool[] = [
       required: ["transactionId", "ruleDescription"],
     },
   },
+  {
+    name: "propose_workflow_rule",
+    description:
+      "Propose a LaunchPad Workflow Rule for a project by describing the desired detect/remediate/verify/escalate flow in plain language. " +
+      "The AI decomposes it into a candidate plan of work units (e.g. detect a condition, attempt remediation, verify it worked, escalate to a ticket or notify a human on failure). " +
+      "This only proposes a candidate plan for the user to review — it does not create or run anything. Use accept_workflow_rule once the user approves the plan, then run_workflow_rule to execute it. " +
+      "Example: 'find hosts missing a Vuln Mgmt agent, try to reinitialize it, escalate to a ticket if that fails, notify a human'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID this workflow rule belongs to" },
+        ruleText: { type: "string", description: "Plain-language description of the desired workflow rule" },
+        transcript: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              role: { type: "string", enum: ["user", "assistant"] },
+              content: { type: "string" },
+            },
+          },
+          description: "Prior clarifying-question exchange for this rule, if refining an earlier proposal",
+        },
+      },
+      required: ["projectId", "ruleText"],
+    },
+  },
+  {
+    name: "accept_workflow_rule",
+    description:
+      "Accept the most recently proposed Workflow Rule plan for a LaunchPad project, locking it in so it can be run. " +
+      "Always present the proposed plan's steps back to the user and confirm before calling this. " +
+      "Fails if notify units don't have an approval decision or ticket units are missing routing — resolve those with the user first via propose_workflow_rule.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID whose proposed plan should be accepted" },
+        isTemplate: { type: "boolean", description: "Save this as a reusable template (default false)" },
+        templateName: { type: "string", description: "Template name, if isTemplate is true" },
+        templateDescription: { type: "string", description: "Template description, if isTemplate is true" },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "run_workflow_rule",
+    description:
+      "Run a previously accepted Workflow Rule for a LaunchPad project. Creates one tracked task per work unit and dispatches each step's tool. " +
+      "The project must have an accepted plan first (see accept_workflow_rule).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID whose accepted plan should be run" },
+        runId: { type: "string", description: "Optional run ID to reuse (omit to mint a new run)" },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "schedule_test",
+    description:
+      "Create a recurring scheduled test/sweep (e.g. a CrowdStrike RFM sweep, a DAST scan, a vulnerability scan). " +
+      "Recognized testType values include: crowdstrike_rfm_sweep (aliases: rfm_sweep, crowdstrike_rfm, reduced_functionality_mode_sweep), crowdstrike_asset_sync, crowdstrike_eol_sweep, crowdstrike_policy_drift, crowdstrike_alert_scan, launchpad_workflow_rule, pentest, dast, sast, vuln_scan, and other existing scheduled test types. " +
+      "Use cronExpression for a specific cadence (e.g. '0 2 * * *' for daily at 2am), or frequency for a plain-language cadence label.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Display name for this schedule" },
+        testType: { type: "string", description: "Canonical test/sweep type, e.g. 'crowdstrike_rfm_sweep'" },
+        frequency: { type: "string", description: "Cadence label, e.g. 'daily', 'weekly', 'hourly'" },
+        cronExpression: { type: "string", description: "Optional cron expression for precise scheduling" },
+        scope: { type: "string", description: "Optional scope description, e.g. asset group or target set" },
+        notes: { type: "string", description: "Optional notes about this schedule" },
+        tags: { type: "array", items: { type: "string" }, description: "Optional tags" },
+        connectorId: { type: "string", description: "Optional connector ID this schedule runs against" },
+        notifyOnComplete: { type: "boolean", description: "Notify when each run completes (default false)" },
+      },
+      required: ["name", "testType", "frequency"],
+    },
+  },
 ];
 
 // ─── Exports ────────────────────────────────────────────────────────────────

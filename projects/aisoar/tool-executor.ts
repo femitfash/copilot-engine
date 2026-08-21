@@ -25,8 +25,15 @@ export interface ToolExecutionContext {
   };
 }
 
-const COPILOT_AGENT_ID = "agent.command_center_orchestrator";
-const COPILOT_AGENT_NAME = "Command Center Copilot";
+const COPILOT_AGENT_ID = "agent.copilot_chat_assistant";
+const COPILOT_AGENT_NAME = "Copilot Chat Assistant";
+
+/**
+ * Governed tool ids Copilot's WRITE tools call via executeGovernedTool().
+ * Mirrored in AISOAR's shared/agentManifest.ts as this agent's capabilityEnvelope
+ * so requireAutonomy() denies anything Copilot doesn't actually expose.
+ */
+export const COPILOT_GOVERNED_WRITE_TOOL_IDS = ["sast.run", "dast.run", "report.generate"];
 
 function buildGovernedCtx(ctx: ToolExecutionContext, toolName: string): Record<string, unknown> {
   return {
@@ -481,6 +488,41 @@ export async function executeWriteTool(
             },
           }),
         },
+        cookies
+      );
+    }
+
+    case "propose_workflow_rule": {
+      const { projectId, ...rest } = input;
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}/workflow-rule/propose`,
+        { method: "POST", body: JSON.stringify(rest) },
+        cookies
+      );
+    }
+
+    case "accept_workflow_rule": {
+      const { projectId, ...rest } = input;
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}/workflow-rule/accept`,
+        { method: "POST", body: JSON.stringify(rest) },
+        cookies
+      );
+    }
+
+    case "run_workflow_rule": {
+      const { projectId, ...rest } = input;
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}/workflow-rule/run`,
+        { method: "POST", body: JSON.stringify(rest) },
+        cookies
+      );
+    }
+
+    case "schedule_test": {
+      return apiCall(
+        `${base}/api/test-scheduler`,
+        { method: "POST", body: JSON.stringify(input) },
         cookies
       );
     }

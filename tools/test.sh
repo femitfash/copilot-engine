@@ -25,5 +25,10 @@ echo ""
 echo "🔍  TypeScript type-check..."
 npx tsc --noEmit && echo "✅  No type errors" || echo "❌  TypeScript errors found above"
 
+# Error classifier checks
+echo ""
+echo "🔍  Error classifier checks..."
+npx ts-node tools/verify-error-classifier.ts
+
 echo ""
 echo "ℹ️   Full test suite: add tests in a /tests directory and run with npm test"
