@@ -286,6 +286,33 @@ export const READ_TOOLS: Tool[] = [
       required: [],
     },
   },
+  {
+    name: "get_workflow_rule_run_status",
+    description:
+      "Get the live status of a Workflow Rule run for a LaunchPad project: per-unit task status, readiness, and pending approvals. " +
+      "Use this to answer 'what's the status of this run' or 'is it done yet' after run_workflow_rule. Omit runId to get the most recent run.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+        runId: { type: "string", description: "Specific run ID to check (omit for the most recent run)" },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "get_workflow_rule_runs",
+    description:
+      "List past Workflow Rule runs for a LaunchPad project — when each one ran, who/what triggered it, and its final status (completed/failed/blocked/running). " +
+      "Use this to answer 'when did this last run' or 'show me the run history'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+      },
+      required: ["projectId"],
+    },
+  },
 ];
 
 // ─── WRITE Tools (queued for user approval) ─────────────────────────────────

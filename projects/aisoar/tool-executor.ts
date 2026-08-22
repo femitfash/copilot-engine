@@ -268,6 +268,27 @@ export async function executeReadTool(
       );
     }
 
+    case "get_workflow_rule_run_status": {
+      const projectId = input.projectId as string;
+      const params = new URLSearchParams();
+      if (input.runId) params.set("runId", String(input.runId));
+      const qs = params.toString();
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}/workflow-rule/state${qs ? `?${qs}` : ""}`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
+    case "get_workflow_rule_runs": {
+      const projectId = input.projectId as string;
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}/workflow-rule/runs`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
     default:
       return JSON.stringify({ error: `Unknown tool: ${toolName}` });
   }

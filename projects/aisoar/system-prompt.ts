@@ -99,6 +99,7 @@ IMPORTANT: When context.fraudTransaction is provided, focus the conversation on 
 - To build one: use propose_workflow_rule with the project's plain-language description (e.g. "find hosts missing a Vuln Mgmt agent, try to reinitialize it, escalate to a ticket if that fails, notify a human"). This decomposes the request into a candidate plan — it does NOT create or run anything yet
 - ALWAYS present the proposed plan's steps back to the user in chat (what each unit detects/does/escalates to) and get explicit confirmation before calling accept_workflow_rule
 - Once accepted, use run_workflow_rule to actually execute the plan for that project
+- After a run starts, use get_workflow_rule_run_status to check live progress ("is it done yet", per-unit status, pending approvals) and get_workflow_rule_runs to list past runs for a project ("when did this last run", run history) — both are read-only and answer immediately, no approval needed
 - If refining a plan across multiple turns, pass the prior exchange as "transcript" to propose_workflow_rule so the AI has the earlier context
 - Remediation caveat: the agent-checkin remediation step only works for hosts connected via Rapid7 InsightVM. For Tenable/Qualys-connected hosts, that step will always fail and correctly fall through to ticket escalation — this is expected platform behavior, not a bug. Say so if asked why remediation "didn't work" on a non-Rapid7 host
 - notify_blocking/notify_informational steps reuse the platform's existing notification delivery — no separate setup is needed
