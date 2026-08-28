@@ -322,7 +322,8 @@ export const READ_TOOLS: Tool[] = [
     description:
       "List the dynamic capabilities authored for a LaunchPad project — capabilities the platform did not have, generated at workflow-rule authoring time to close a gap. " +
       "Each has a status: 'active' (ready to run), 'pending_approval' (waiting on the approval queue), 'pending_credentials' (a new connector needs credentials on the Connections page), or 'disabled'. " +
-      "Use this when accept_workflow_rule fails with workflow_rule_unsatisfied_capabilities, or when the user asks why a workflow rule is blocked, what new capability was created, or what a rule is waiting on.",
+      "Each connector-kind tool also reports self-healing state: healthStatus is 'healthy' (default, or automatically repaired) or 'degraded_autoheal_exhausted' (its live response stopped matching what the workflow needs and automatic repair could not fix it — needs a human to edit it). lastRepairOutcome and repairTier record the most recent automatic repair attempt, if any. " +
+      "Use this when accept_workflow_rule fails with workflow_rule_unsatisfied_capabilities, or when the user asks why a workflow rule is blocked, what new capability was created, whether a tool healed itself, or what a rule is waiting on.",
     input_schema: {
       type: "object" as const,
       properties: {
