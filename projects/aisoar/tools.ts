@@ -290,7 +290,11 @@ export const READ_TOOLS: Tool[] = [
     name: "get_workflow_rule_run_status",
     description:
       "Get the live status of a Workflow Rule run for a LaunchPad project: per-unit task status, readiness, and pending approvals. " +
-      "Use this to answer 'what's the status of this run' or 'is it done yet' after run_workflow_rule. Omit runId to get the most recent run.",
+      "Use this to answer 'what's the status of this run' or 'is it done yet' after run_workflow_rule. Omit runId to get the most recent run. " +
+      "Reading the response: a unit with status 'skipped' reached the end without processing anything and ran no tools — never report it as a success; " +
+      "result.zeroItemsReason says exactly why (upstream produced nothing, a filter excluded everything, or the upstream unit has not run yet) and should be quoted to the user. " +
+      "result.filterNote means the unit ran but the operator's filter conditions could not apply, so the rule likely needs editing. " +
+      "pendingApprovalCount is the live number of undecided approval requests for that unit — it, not the plan's approvalRequired policy, is what determines whether something is actually waiting on a human right now.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -305,6 +309,20 @@ export const READ_TOOLS: Tool[] = [
     description:
       "List past Workflow Rule runs for a LaunchPad project — when each one ran, who/what triggered it, and its final status (completed/failed/blocked/running). " +
       "Use this to answer 'when did this last run' or 'show me the run history'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "get_launchpad_dynamic_tools",
+    description:
+      "List the dynamic capabilities authored for a LaunchPad project — capabilities the platform did not have, generated at workflow-rule authoring time to close a gap. " +
+      "Each has a status: 'active' (ready to run), 'pending_approval' (waiting on the approval queue), 'pending_credentials' (a new connector needs credentials on the Connections page), or 'disabled'. " +
+      "Use this when accept_workflow_rule fails with workflow_rule_unsatisfied_capabilities, or when the user asks why a workflow rule is blocked, what new capability was created, or what a rule is waiting on.",
     input_schema: {
       type: "object" as const,
       properties: {

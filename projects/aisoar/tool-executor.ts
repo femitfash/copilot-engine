@@ -289,6 +289,15 @@ export async function executeReadTool(
       );
     }
 
+    case "get_launchpad_dynamic_tools": {
+      const projectId = input.projectId as string;
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}/dynamic-tools`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
     default:
       return JSON.stringify({ error: `Unknown tool: ${toolName}` });
   }
