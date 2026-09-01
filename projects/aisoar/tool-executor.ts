@@ -117,6 +117,40 @@ async function apiCall(
   return truncate(text);
 }
 
+// Same auth/CSRF handling as apiCall, but returns parsed JSON (or null on any
+// failure) instead of a truncated string — for tools that need to chain two
+// calls (e.g. resolve the latest runId, then read that run's state) without
+// truncating the intermediate response before it's even parsed.
+async function apiCallJson<T = any>(
+  url: string,
+  options: RequestInit,
+  cookies?: string
+): Promise<T | null> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+  if (cookies) {
+    headers["Cookie"] = cookies;
+  }
+  const baseUrl = new URL(url);
+  headers["Origin"] = baseUrl.origin;
+
+  const res = await fetch(url, { ...options, headers, credentials: "include" });
+  if (!res.ok) return null;
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+// Mirrors missionIdFor() in AISOAR's server/services/launchpadWorkflowRuleRunner.ts —
+// keep in sync if that format ever changes.
+function launchpadMissionId(projectId: string, runId: string, unitId: string): string {
+  return `launchpad:${projectId}:${runId}:${unitId}`;
+}
+
 // ─── READ Tool Executor ─────────────────────────────────────────────────────
 
 export async function executeReadTool(
@@ -296,6 +330,130 @@ export async function executeReadTool(
         { method: "GET" },
         cookies
       );
+    }
+
+    case "diagnose_launchpad_unit": {
+      const projectId = input.projectId as string;
+      const unitId = input.unitId as string;
+      let runId = input.runId as string | undefined;
+
+      if (!runId) {
+        const runsData = await apiCallJson<{ runs?: Array<{ runId: string }> }>(
+          `${base}/api/launchpad/projects/${projectId}/workflow-rule/runs`,
+          { method: "GET" },
+          cookies
+        );
+        runId = runsData?.runs?.[0]?.runId;
+        if (!runId) {
+          return truncate(JSON.stringify({ error: true, message: "This project has no Workflow Rule runs yet." }));
+        }
+      }
+
+      // Force-generate the cached plain-language explanation (zeroItemsExplanation) before
+      // reading state, so it's present on the first ask rather than requiring the user to
+      // click "Explain in plain language" themselves first. Best-effort: state is still read
+      // and returned even if this fails or the gateway declines.
+      await apiCallJson(
+        `${base}/api/launchpad/projects/${projectId}/workflow-rule/units/${encodeURIComponent(unitId)}/explain`,
+        { method: "POST", body: JSON.stringify({ runId }) },
+        cookies
+      );
+
+      const [state, project] = await Promise.all([
+        apiCallJson<{ units?: any[] }>(
+          `${base}/api/launchpad/projects/${projectId}/workflow-rule/state?runId=${encodeURIComponent(runId)}`,
+          { method: "GET" },
+          cookies
+        ),
+        apiCallJson<{ config?: { workflowRule?: { plan?: { units?: any[] } } } }>(
+          `${base}/api/launchpad/projects/${projectId}`,
+          { method: "GET" },
+          cookies
+        ),
+      ]);
+
+      const runtimeUnit = state?.units?.find((u) => u.unitId === unitId);
+      if (!runtimeUnit) {
+        return truncate(JSON.stringify({ error: true, message: `Unit ${unitId} has no task in run ${runId}.` }));
+      }
+      const planUnit = project?.config?.workflowRule?.plan?.units?.find((u: any) => u.unitId === unitId);
+
+      return truncate(
+        JSON.stringify({
+          runId,
+          ...runtimeUnit,
+          plan: planUnit
+            ? {
+                steps: planUnit.steps,
+                forEach: planUnit.forEach,
+                filter: planUnit.filter,
+                matchedAgentId: planUnit.matchedAgentId,
+                candidateAgentIds: planUnit.candidateAgentIds,
+                unsatisfiedCapabilities: planUnit.unsatisfiedCapabilities,
+                dependsOn: planUnit.dependsOn,
+              }
+            : null,
+        })
+      );
+    }
+
+    case "get_launchpad_unit_run_history": {
+      const projectId = input.projectId as string;
+      const unitId = input.unitId as string;
+      const params = new URLSearchParams();
+      if (input.limit) params.set("limit", String(input.limit));
+      const qs = params.toString();
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}/workflow-rule/units/${encodeURIComponent(unitId)}/run-history${qs ? `?${qs}` : ""}`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
+    case "get_tool_registry_info": {
+      const toolId = input.toolId as string;
+      return apiCall(
+        `${base}/api/tools/inventory/${encodeURIComponent(toolId)}`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
+    case "get_launchpad_pending_approvals": {
+      const projectId = input.projectId as string;
+      const unitId = input.unitId as string;
+      const runId = input.runId as string;
+      const agentId = input.agentId as string | undefined;
+
+      const missionId = launchpadMissionId(projectId, runId, unitId);
+      const missionApprovals = await apiCallJson<any[]>(
+        `${base}/api/missions/${encodeURIComponent(missionId)}/approval-requests`,
+        { method: "GET" },
+        cookies
+      );
+      if (Array.isArray(missionApprovals) && missionApprovals.length > 0) {
+        return truncate(JSON.stringify({ source: "mission", missionId, approvals: missionApprovals }));
+      }
+
+      if (agentId) {
+        const agentApprovals = await apiCallJson<any[]>(
+          `${base}/api/ai-agents/${encodeURIComponent(agentId)}/approval-requests?status=pending`,
+          { method: "GET" },
+          cookies
+        );
+        if (Array.isArray(agentApprovals) && agentApprovals.length > 0) {
+          return truncate(
+            JSON.stringify({
+              source: "agent_fallback",
+              missionId,
+              note: "No pending approvals under this run's mission id, but this agent has pending approvals from another run/context — review the agentId/toolId on each to confirm relevance.",
+              approvals: agentApprovals,
+            })
+          );
+        }
+      }
+
+      return truncate(JSON.stringify({ source: agentId ? "mission_and_agent" : "mission_only", missionId, approvals: [] }));
     }
 
     default:
@@ -545,6 +703,33 @@ export async function executeWriteTool(
       return apiCall(
         `${base}/api/launchpad/projects/${projectId}/workflow-rule/run`,
         { method: "POST", body: JSON.stringify(rest) },
+        cookies
+      );
+    }
+
+    case "dismiss_launchpad_capability_gap": {
+      const { projectId, unitId, ...rest } = input;
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/dismiss-capability`,
+        { method: "PATCH", body: JSON.stringify(rest) },
+        cookies
+      );
+    }
+
+    case "reassign_launchpad_unit_agent": {
+      const { projectId, unitId, agentId } = input;
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/agent`,
+        { method: "PATCH", body: JSON.stringify({ agentId: agentId ?? null }) },
+        cookies
+      );
+    }
+
+    case "patch_launchpad_unit_plan": {
+      const { projectId, unitId, ...rest } = input;
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/steps`,
+        { method: "PATCH", body: JSON.stringify(rest) },
         cookies
       );
     }
