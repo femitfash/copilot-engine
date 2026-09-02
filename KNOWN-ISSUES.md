@@ -671,22 +671,41 @@ stays stale and the host app keeps running the old code indefinitely.
 cd vendor/copilot-engine
 npm run build
 ```
-A `prepare` script (`"prepare": "tsc"`) is now in `package.json` so a plain
-`npm install` at the host app's root also rebuilds `dist/` — npm runs
-`prepare` for local `file:`/symlinked dependencies as of npm@7. This closes
-the gap for fresh installs/deploys, but a source edit made mid-session still
-needs an explicit `npm run build` (or a repeat `npm install`) before the
-host app's already-running dev server will see it.
+A `prepare` script is now in `package.json` so a plain `npm install` at the
+host app's root also rebuilds `dist/` — npm runs `prepare` for local
+`file:`/symlinked dependencies as of npm@7. This closes the gap for a normal
+dev install, but a source edit made mid-session still needs an explicit
+`npm run build` (or a repeat `npm install`) before the host app's
+already-running dev server will see it.
+
+The `prepare` script deliberately no-ops on a production-only install
+(`npm ci --omit=dev`, detected via `npm_config_omit === 'dev'`) instead of
+running `tsc` — that install has none of the *host app's* devDependencies
+(`@types/*`, etc.) that this package's `tsconfig.json` implicitly resolves
+against, so `tsc` would fail there with `TS2688: Cannot find type definition
+file for '...'` and abort the entire `npm ci`. This first shipped without the
+guard and broke the Docker `prod-deps` stage's `npm ci --omit=dev` for exactly
+this reason (see AISOAR PR #643) — that stage's copy of copilot-engine is
+discarded anyway (AISOAR's `.docker/Dockerfile` has a dedicated
+`copilot-engine-builder` stage with real devDependencies installed that
+produces the `dist/` actually shipped), so skipping the build there costs
+nothing. `prepare` also swallows (rather than propagates) any other `tsc`
+failure, so a genuine compile error introduced by an edit will NOT fail
+`npm install` — catch that with `npm run build` directly, not by relying on
+`prepare`.
 
 **Checklist**:
 - [ ] After editing anything under `vendor/copilot-engine/src|routes|projects`,
       run `npm run build` inside `vendor/copilot-engine` before testing in the
-      host app
+      host app — don't rely on `prepare` to catch a real compile error
 - [ ] If debugging "the fix is in the code but the bug still happens live",
       check file timestamps: `dist/**/*.js` should be newer than the `src/`
       file it's compiled from
-- [ ] `package.json` still has a `"prepare": "tsc"` script (don't remove it
-      when touching `scripts`)
+- [ ] If adding a new Docker stage or CI step that runs `npm ci` against the
+      host app's root `package.json`, confirm it either installs
+      devDependencies or doesn't need this package's `dist/` to already be
+      fresh (i.e. a later stage rebuilds/copies it in, as the Docker
+      `copilot-engine-builder` stage does)
 
 ---
 
