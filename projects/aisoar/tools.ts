@@ -287,6 +287,17 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "list_launchpad_projects",
+    description:
+      "List LaunchPad projects with their id, name, department, status, lifecycleStage, and build stage. " +
+      "Use this to resolve a projectId when the user refers to a project by name/department and context.launchpadScope is not present (they're not currently viewing that project's LaunchPad page) — never ask the user to look up and paste a raw project ID themselves.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "get_workflow_rule_run_status",
     description:
       "Get the live status of a Workflow Rule run for a LaunchPad project: per-unit task status, readiness, and pending approvals. " +
@@ -330,6 +341,68 @@ export const READ_TOOLS: Tool[] = [
         projectId: { type: "string", description: "LaunchPad project ID" },
       },
       required: ["projectId"],
+    },
+  },
+  {
+    name: "diagnose_launchpad_unit",
+    description:
+      "Diagnose ONE Workflow Rule unit in depth — the first tool to call when a user opens a specific blocked/failed/skipped unit and asks 'why' or 'fix this'. " +
+      "Combines the unit's live run outcome with its current authored composition in one call: status, error, pendingApprovalCount, result (zeroItemsReason/zeroItemsExplanation/filterNote/healAttempts — the automated self-heal engine's own reasoning about why it could or couldn't fix this unit), and plan (its current steps, forEach, filter, matchedAgentId, unsatisfiedCapabilities) so you have everything needed to both explain the failure and, if you propose a fix, call patch_launchpad_unit_plan without a second round-trip to read the current steps first. " +
+      "Omit runId to use the project's most recent run. " +
+      "A healAttempts entry with verdict 'unresolvable' means the automated healer already tried and explains exactly what a human fix would require — read its reasoning before proposing your own patch, and don't re-propose something it already ruled out as outside the allowed patch scope (forEach/filter/step params/returns) — that needs a different unit's steps changed instead, or a human decision.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+        unitId: { type: "string", description: "The work unit's ID" },
+        runId: { type: "string", description: "Specific run ID (omit for the most recent run)" },
+      },
+      required: ["projectId", "unitId"],
+    },
+  },
+  {
+    name: "get_launchpad_unit_run_history",
+    description:
+      "Get one unit's outcome across its last several runs (default 5) — was it blocked every time, or did it work before and only just start failing? " +
+      "Use this when the user asks 'has this always been broken' or 'when did this stop working', or before proposing a fix, to check whether an issue is new or long-standing.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+        unitId: { type: "string", description: "The work unit's ID" },
+        limit: { type: "number", description: "Max past runs to return (default 5, capped at 20)" },
+      },
+      required: ["projectId", "unitId"],
+    },
+  },
+  {
+    name: "get_tool_registry_info",
+    description:
+      "Look up a tool's declared purpose, category, safety constraints, and certification level from the platform's tool registry. " +
+      "Use this to sanity-check that a step's toolId actually matches what the unit is trying to do before proposing a patch_launchpad_unit_plan change — e.g. confirming a step calls a read-only lookup tool and not a mutating one, or checking supportsConnector/allowedConnectors before suggesting a connector binding.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        toolId: { type: "string", description: "Tool ID from the registry, e.g. 'cspm.posture.scan'" },
+      },
+      required: ["toolId"],
+    },
+  },
+  {
+    name: "get_launchpad_pending_approvals",
+    description:
+      "Check whether a unit really has an undecided approval request waiting on a human right now. " +
+      "Queries the specific run's approval queue first; if that comes back empty but the unit's assigned agent is known, also checks that agent's own pending approvals — a unit can be left showing an old approval reference from an earlier run that a strictly run-scoped query would miss entirely, so an empty first result is not conclusive on its own without the agentId fallback. " +
+      "Use this before telling a user 'nothing is pending' — diagnose_launchpad_unit's pendingApprovalCount already covers the common case; use this tool when that number is 0 but the user insists something is stuck waiting on approval, or when checking an older run.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+        unitId: { type: "string", description: "The work unit's ID" },
+        runId: { type: "string", description: "The run ID the unit's task belongs to" },
+        agentId: { type: "string", description: "The unit's assigned agent ID, if known (from diagnose_launchpad_unit's plan.matchedAgentId) — enables the fallback check" },
+      },
+      required: ["projectId", "unitId", "runId"],
     },
   },
 ];
@@ -713,7 +786,8 @@ export const WRITE_TOOLS: Tool[] = [
     name: "run_workflow_rule",
     description:
       "Run a previously accepted Workflow Rule for a LaunchPad project. Creates one tracked task per work unit and dispatches each step's tool. " +
-      "The project must have an accepted plan first (see accept_workflow_rule).",
+      "The project must have an accepted plan first (see accept_workflow_rule). " +
+      "Also the correct tool to retry after fixing a unit (via dismiss_launchpad_capability_gap, reassign_launchpad_unit_agent, or patch_launchpad_unit_plan) — it always reruns every unit in the plan, not just the one you repaired, since there is no unit-scoped rerun. Say so plainly if the user expects only the fixed unit to run.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -721,6 +795,101 @@ export const WRITE_TOOLS: Tool[] = [
         runId: { type: "string", description: "Optional run ID to reuse (omit to mint a new run)" },
       },
       required: ["projectId"],
+    },
+  },
+  {
+    name: "dismiss_launchpad_capability_gap",
+    description:
+      "Clear ONE entry from a unit's unsatisfiedCapabilities list, when the user has read the caveat and confirms the unit's existing steps are sufficient as-is — this does not touch steps, only the advisory note. " +
+      "Only for a false-positive/already-handled caveat (e.g. an approximation note the operator has reviewed and accepted). If the capability describes a genuine missing tool, that needs patch_launchpad_unit_plan (point it at a real tool) or a developer, not a dismissal — never use this tool to make a real gap disappear from view. " +
+      "Always quote the exact capability text back to the user and get explicit confirmation before calling this.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+        unitId: { type: "string", description: "The work unit's ID" },
+        capability: { type: "string", description: "The exact unsatisfiedCapabilities string to dismiss, from diagnose_launchpad_unit's plan.unsatisfiedCapabilities" },
+      },
+      required: ["projectId", "unitId", "capability"],
+    },
+  },
+  {
+    name: "reassign_launchpad_unit_agent",
+    description:
+      "Change (or clear, with agentId null) which agent is assigned to execute a unit. " +
+      "Use when diagnosis shows the wrong agent was matched, or a unit has no agent and capability authoring needs one attributed. Always confirm the new agent with the user first — this changes who a run's tool calls are attributed to.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+        unitId: { type: "string", description: "The work unit's ID" },
+        agentId: { type: "string", description: "New agent ID to assign, or omit/null to clear the assignment" },
+      },
+      required: ["projectId", "unitId"],
+    },
+  },
+  {
+    name: "patch_launchpad_unit_plan",
+    description:
+      "Edit a unit's authored composition: its steps, forEach source, or filter conditions. This is the actual repair tool for the mismatches diagnose_launchpad_unit surfaces (a wrong toolId, a stale forEach.source pointing at a field the upstream unit no longer produces, a filter condition naming a field/casing the tool's real output doesn't use). " +
+      "`steps` is REQUIRED on every call, even when only forEach or filter is changing — pass back diagnose_launchpad_unit's plan.steps unchanged in that case, since the underlying route always replaces the full steps array. Include expectedStepIds (diagnose_launchpad_unit's plan.steps stepIds, in order) so a concurrent edit by someone else is rejected instead of silently overwritten. " +
+      "Never guess a new toolId or field name — check it first with get_tool_registry_info or against a value actually seen in get_launchpad_unit_run_history's result.deliverable, so this doesn't just trade one wrong guess for another. " +
+      "Always show the user exactly what will change (before → after, for whichever of steps/forEach/filter you're touching) and get explicit confirmation before calling this — it mutates a plan other units may depend on.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+        unitId: { type: "string", description: "The work unit's ID" },
+        steps: {
+          type: "array",
+          description: "The unit's full desired step list (required — pass back the current steps unchanged if only forEach/filter is changing)",
+          items: {
+            type: "object",
+            properties: {
+              stepId: { type: "string" },
+              toolId: { type: "string" },
+              params: { type: "object" },
+              bindResultTo: { type: "string" },
+              onError: { type: "string", enum: ["stop", "continue", "tolerate_exists"] },
+              returns: { type: "object", description: "Map of output field name to type (string/number/boolean/array/object)" },
+            },
+            required: ["stepId", "toolId"],
+          },
+        },
+        forEach: {
+          type: "object",
+          description: "New forEach config, or explicit null to remove iteration",
+          properties: {
+            source: { type: "string" },
+            as: { type: "string" },
+            maxItems: { type: "number" },
+          },
+        },
+        filter: {
+          type: "object",
+          description: "New filter config",
+          properties: {
+            logic: { type: "string", enum: ["AND", "OR"] },
+            conditions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  field: { type: "string" },
+                  operator: { type: "string" },
+                  value: {},
+                },
+              },
+            },
+          },
+        },
+        expectedStepIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Current stepIds in order, for optimistic-concurrency checking (recommended)",
+        },
+      },
+      required: ["projectId", "unitId", "steps"],
     },
   },
   {

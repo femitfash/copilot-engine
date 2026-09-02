@@ -8,6 +8,20 @@ import type {
   ToolResult,
 } from "../llm-types";
 
+// Reasoning-tier OpenAI models (gpt-5*, o1*-o4*) reject the legacy
+// `max_tokens` sampling parameter — they require `max_completion_tokens`
+// instead. They also spend part of that budget on hidden reasoning tokens
+// before emitting visible content, so a small caller-requested budget can be
+// consumed entirely by reasoning; floor it so these models still return
+// visible output.
+const REASONING_TIER_MODEL = /^(gpt-5|o[1-9])/i;
+const REASONING_TIER_MIN_COMPLETION_TOKENS = 2000;
+
+function tokenLimitParam(model: string, limit: number): Record<string, number> {
+  if (!REASONING_TIER_MODEL.test(model)) return { max_tokens: limit };
+  return { max_completion_tokens: Math.max(limit, REASONING_TIER_MIN_COMPLETION_TOKENS) };
+}
+
 /**
  * OpenAI provider — supports GPT-4.1 mini, GPT-4o, and any model
  * that supports function calling / tool use.
@@ -47,7 +61,7 @@ export class OpenAIProvider implements LLMProvider {
 
     const response = await this.client.chat.completions.create({
       model: params.model,
-      max_tokens: params.maxTokens,
+      ...tokenLimitParam(params.model, params.maxTokens),
       tools,
       messages: openaiMessages,
     });

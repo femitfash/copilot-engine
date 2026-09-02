@@ -648,6 +648,48 @@ import "dotenv/config";
 
 ---
 
+## 23. Source Fix Doesn't Take Effect — Stale `dist/` Build
+
+**Symptom**: You fix a bug in `src/`, the code looks correct, but the host app
+still hits the exact same error at runtime as if the fix were never made.
+
+**Root Cause**: `dist/` is git-ignored (`.gitignore`) and this package has no
+`prepare` script (prior to this issue being documented). Host apps consume
+copilot-engine as a `file:` dependency (`"copilot-engine": "file:vendor/copilot-engine"`),
+which npm resolves as a **symlink** into `node_modules/`. `package.json`'s
+`exports`/`main` fields point every subpath (`.`, `./mount`,
+`./projects/aisoar/*`, etc.) at compiled files under `dist/`, not `src/`. A
+host app's own dev server (`tsx`/`ts-node`) and its own build (e.g. esbuild
+with `--packages=external`) both resolve this package through normal Node
+module resolution — i.e. through `dist/`. Neither of them compiles
+copilot-engine's TypeScript. If nobody manually runs `npm run build` inside
+this package after a source change, the symlinked `dist/` output silently
+stays stale and the host app keeps running the old code indefinitely.
+
+**Fix**: Rebuild this package after any `src/`/`routes/`/`projects/` change:
+```bash
+cd vendor/copilot-engine
+npm run build
+```
+A `prepare` script (`"prepare": "tsc"`) is now in `package.json` so a plain
+`npm install` at the host app's root also rebuilds `dist/` — npm runs
+`prepare` for local `file:`/symlinked dependencies as of npm@7. This closes
+the gap for fresh installs/deploys, but a source edit made mid-session still
+needs an explicit `npm run build` (or a repeat `npm install`) before the
+host app's already-running dev server will see it.
+
+**Checklist**:
+- [ ] After editing anything under `vendor/copilot-engine/src|routes|projects`,
+      run `npm run build` inside `vendor/copilot-engine` before testing in the
+      host app
+- [ ] If debugging "the fix is in the code but the bug still happens live",
+      check file timestamps: `dist/**/*.js` should be newer than the `src/`
+      file it's compiled from
+- [ ] `package.json` still has a `"prepare": "tsc"` script (don't remove it
+      when touching `scripts`)
+
+---
+
 ## Deployment Verification Checklist
 
 Before deploying to any new environment:
