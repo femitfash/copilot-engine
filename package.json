@@ -59,7 +59,7 @@
   "scripts": {
     "dev": "ts-node src/index.ts",
     "build": "tsc",
-    "prepare": "tsc",
+    "prepare": "node -e \"if(process.env.npm_config_omit==='dev'){console.log('[copilot-engine] skipping prepare build (production-only install)');process.exit(0)}try{require('child_process').execSync('tsc',{stdio:'inherit'})}catch(e){console.error('[copilot-engine] prepare build failed — dist/ may be stale. Run npm run build after installing devDependencies.')}\"",
     "prestart": "npm run build",
     "start": "node dist/src/index.js"
   },
