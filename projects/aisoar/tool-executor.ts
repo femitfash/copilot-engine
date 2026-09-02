@@ -302,6 +302,23 @@ export async function executeReadTool(
       );
     }
 
+    case "list_launchpad_projects": {
+      const overview = await apiCallJson<{ projects?: Array<Record<string, any>> }>(
+        `${base}/api/launchpad/overview`,
+        { method: "GET" },
+        cookies
+      );
+      const projects = (overview?.projects || []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        department: p.config?.scan?.department,
+        status: p.status,
+        lifecycleStage: p.lifecycleStage,
+        stage: p.config?.stage,
+      }));
+      return truncate(JSON.stringify({ projects }));
+    }
+
     case "get_workflow_rule_run_status": {
       const projectId = input.projectId as string;
       const params = new URLSearchParams();

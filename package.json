@@ -59,6 +59,7 @@
   "scripts": {
     "dev": "ts-node src/index.ts",
     "build": "tsc",
+    "prepare": "tsc",
     "prestart": "npm run build",
     "start": "node dist/src/index.js"
   },

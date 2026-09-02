@@ -287,6 +287,17 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "list_launchpad_projects",
+    description:
+      "List LaunchPad projects with their id, name, department, status, lifecycleStage, and build stage. " +
+      "Use this to resolve a projectId when the user refers to a project by name/department and context.launchpadScope is not present (they're not currently viewing that project's LaunchPad page) — never ask the user to look up and paste a raw project ID themselves.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "get_workflow_rule_run_status",
     description:
       "Get the live status of a Workflow Rule run for a LaunchPad project: per-unit task status, readiness, and pending approvals. " +
