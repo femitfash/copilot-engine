@@ -288,7 +288,7 @@ export async function executeReadTool(
 
     case "get_unified_findings": {
       const params = new URLSearchParams();
-      for (const key of ["severity", "findingType", "status", "executorType", "since", "until", "limit"] as const) {
+      for (const key of ["severity", "findingType", "status", "executorType", "since", "until", "category", "cveId", "sourceToolId", "limit"] as const) {
         const value = input[key];
         if (value !== undefined && value !== null && value !== "") {
           params.set(key, String(value));
