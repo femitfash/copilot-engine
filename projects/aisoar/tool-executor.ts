@@ -147,8 +147,8 @@ async function apiCallJson<T = any>(
 
 // Mirrors missionIdFor() in AISOAR's server/services/launchpadWorkflowRuleRunner.ts —
 // keep in sync if that format ever changes.
-function launchpadMissionId(projectId: string, runId: string, unitId: string): string {
-  return `launchpad:${projectId}:${runId}:${unitId}`;
+function launchpadMissionId(workflowId: string, runId: string, unitId: string): string {
+  return `launchpad:${workflowId}:${runId}:${unitId}`;
 }
 
 // ─── READ Tool Executor ─────────────────────────────────────────────────────
@@ -303,60 +303,105 @@ export async function executeReadTool(
     }
 
     case "list_launchpad_projects": {
-      const overview = await apiCallJson<{ projects?: Array<Record<string, any>> }>(
-        `${base}/api/launchpad/overview`,
+      return apiCall(`${base}/api/launchpad/projects`, { method: "GET" }, cookies);
+    }
+
+    case "list_launchpad_workflows": {
+      const projectId = input.projectId as string;
+      const workflows = await apiCallJson<{ workflows?: Array<Record<string, any>> }>(
+        `${base}/api/launchpad/projects/${projectId}/workflows`,
         { method: "GET" },
         cookies
       );
-      const projects = (overview?.projects || []).map((p) => ({
-        id: p.id,
-        name: p.name,
-        department: p.config?.scan?.department,
-        status: p.status,
-        lifecycleStage: p.lifecycleStage,
-        stage: p.config?.stage,
+      const summarized = (workflows?.workflows || []).map((w) => ({
+        id: w.id,
+        name: w.name,
+        department: w.config?.scan?.department,
+        status: w.status,
+        lifecycleStage: w.lifecycleStage,
+        stage: w.config?.stage,
       }));
-      return truncate(JSON.stringify({ projects }));
+      return truncate(JSON.stringify({ workflows: summarized }));
+    }
+
+    case "search_launchpad_workflows": {
+      const q = encodeURIComponent(String(input.q ?? ""));
+      return apiCall(`${base}/api/launchpad/workflow-search?q=${q}&mode=discover`, { method: "GET" }, cookies);
+    }
+
+    case "get_remote_workflow_memory": {
+      const ref = encodeURIComponent(String(input.ref ?? ""));
+      const key = encodeURIComponent(String(input.key ?? ""));
+      return apiCall(`${base}/api/launchpad/workflow-references/resolve?ref=${ref}&key=${key}`, { method: "GET" }, cookies);
+    }
+
+    case "get_launchpad_workflow_memory": {
+      const workflowId = input.workflowId as string;
+      const memory = await apiCallJson<{ entries?: Array<{ key: string; value: unknown; updatedBy: string; updatedAt: string }> }>(
+        `${base}/api/launchpad/workflows/${workflowId}/memory`,
+        { method: "GET" },
+        cookies
+      );
+      const entries = memory?.entries || [];
+      if (input.key) {
+        const entry = entries.find((e) => e.key === input.key);
+        return truncate(JSON.stringify({ key: input.key, value: entry?.value ?? null, found: Boolean(entry) }));
+      }
+      return truncate(JSON.stringify({ entries }));
+    }
+
+    case "get_launchpad_run_variable": {
+      const workflowId = input.workflowId as string;
+      const runId = input.runId as string;
+      const name = input.name as string;
+      const state = await apiCallJson<{ variables?: Record<string, unknown> }>(
+        `${base}/api/launchpad/workflows/${workflowId}/runs/${runId}/variables`,
+        { method: "GET" },
+        cookies
+      );
+      const variables = state?.variables || {};
+      const found = Object.prototype.hasOwnProperty.call(variables, name);
+      return truncate(JSON.stringify({ name, value: found ? variables[name] : null, found }));
     }
 
     case "get_workflow_rule_run_status": {
-      const projectId = input.projectId as string;
+      const workflowId = input.workflowId as string;
       const params = new URLSearchParams();
       if (input.runId) params.set("runId", String(input.runId));
       const qs = params.toString();
       return apiCall(
-        `${base}/api/launchpad/projects/${projectId}/workflow-rule/state${qs ? `?${qs}` : ""}`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/state${qs ? `?${qs}` : ""}`,
         { method: "GET" },
         cookies
       );
     }
 
     case "get_workflow_rule_runs": {
-      const projectId = input.projectId as string;
+      const workflowId = input.workflowId as string;
       return apiCall(
-        `${base}/api/launchpad/projects/${projectId}/workflow-rule/runs`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/runs`,
         { method: "GET" },
         cookies
       );
     }
 
     case "get_launchpad_dynamic_tools": {
-      const projectId = input.projectId as string;
+      const workflowId = input.workflowId as string;
       return apiCall(
-        `${base}/api/launchpad/projects/${projectId}/dynamic-tools`,
+        `${base}/api/launchpad/workflows/${workflowId}/dynamic-tools`,
         { method: "GET" },
         cookies
       );
     }
 
     case "diagnose_launchpad_unit": {
-      const projectId = input.projectId as string;
+      const workflowId = input.workflowId as string;
       const unitId = input.unitId as string;
       let runId = input.runId as string | undefined;
 
       if (!runId) {
         const runsData = await apiCallJson<{ runs?: Array<{ runId: string }> }>(
-          `${base}/api/launchpad/projects/${projectId}/workflow-rule/runs`,
+          `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/runs`,
           { method: "GET" },
           cookies
         );
@@ -371,19 +416,19 @@ export async function executeReadTool(
       // click "Explain in plain language" themselves first. Best-effort: state is still read
       // and returned even if this fails or the gateway declines.
       await apiCallJson(
-        `${base}/api/launchpad/projects/${projectId}/workflow-rule/units/${encodeURIComponent(unitId)}/explain`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId)}/explain`,
         { method: "POST", body: JSON.stringify({ runId }) },
         cookies
       );
 
       const [state, project] = await Promise.all([
         apiCallJson<{ units?: any[] }>(
-          `${base}/api/launchpad/projects/${projectId}/workflow-rule/state?runId=${encodeURIComponent(runId)}`,
+          `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/state?runId=${encodeURIComponent(runId)}`,
           { method: "GET" },
           cookies
         ),
         apiCallJson<{ config?: { workflowRule?: { plan?: { units?: any[] } } } }>(
-          `${base}/api/launchpad/projects/${projectId}`,
+          `${base}/api/launchpad/workflows/${workflowId}`,
           { method: "GET" },
           cookies
         ),
@@ -415,13 +460,13 @@ export async function executeReadTool(
     }
 
     case "get_launchpad_unit_run_history": {
-      const projectId = input.projectId as string;
+      const workflowId = input.workflowId as string;
       const unitId = input.unitId as string;
       const params = new URLSearchParams();
       if (input.limit) params.set("limit", String(input.limit));
       const qs = params.toString();
       return apiCall(
-        `${base}/api/launchpad/projects/${projectId}/workflow-rule/units/${encodeURIComponent(unitId)}/run-history${qs ? `?${qs}` : ""}`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId)}/run-history${qs ? `?${qs}` : ""}`,
         { method: "GET" },
         cookies
       );
@@ -437,12 +482,12 @@ export async function executeReadTool(
     }
 
     case "get_launchpad_pending_approvals": {
-      const projectId = input.projectId as string;
+      const workflowId = input.workflowId as string;
       const unitId = input.unitId as string;
       const runId = input.runId as string;
       const agentId = input.agentId as string | undefined;
 
-      const missionId = launchpadMissionId(projectId, runId, unitId);
+      const missionId = launchpadMissionId(workflowId, runId, unitId);
       const missionApprovals = await apiCallJson<any[]>(
         `${base}/api/missions/${encodeURIComponent(missionId)}/approval-requests`,
         { method: "GET" },
@@ -698,55 +743,90 @@ export async function executeWriteTool(
     }
 
     case "propose_workflow_rule": {
-      const { projectId, ...rest } = input;
+      const { workflowId, ...rest } = input;
       return apiCall(
-        `${base}/api/launchpad/projects/${projectId}/workflow-rule/propose`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/propose`,
         { method: "POST", body: JSON.stringify(rest) },
         cookies
       );
     }
 
     case "accept_workflow_rule": {
-      const { projectId, ...rest } = input;
+      const { workflowId, ...rest } = input;
       return apiCall(
-        `${base}/api/launchpad/projects/${projectId}/workflow-rule/accept`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/accept`,
         { method: "POST", body: JSON.stringify(rest) },
         cookies
       );
     }
 
     case "run_workflow_rule": {
-      const { projectId, ...rest } = input;
+      const { workflowId, ...rest } = input;
       return apiCall(
-        `${base}/api/launchpad/projects/${projectId}/workflow-rule/run`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/run`,
         { method: "POST", body: JSON.stringify(rest) },
         cookies
       );
     }
 
     case "dismiss_launchpad_capability_gap": {
-      const { projectId, unitId, ...rest } = input;
+      const { workflowId, unitId, ...rest } = input;
       return apiCall(
-        `${base}/api/launchpad/projects/${projectId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/dismiss-capability`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/dismiss-capability`,
         { method: "PATCH", body: JSON.stringify(rest) },
         cookies
       );
     }
 
     case "reassign_launchpad_unit_agent": {
-      const { projectId, unitId, agentId } = input;
+      const { workflowId, unitId, agentId } = input;
       return apiCall(
-        `${base}/api/launchpad/projects/${projectId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/agent`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/agent`,
         { method: "PATCH", body: JSON.stringify({ agentId: agentId ?? null }) },
         cookies
       );
     }
 
     case "patch_launchpad_unit_plan": {
-      const { projectId, unitId, ...rest } = input;
+      const { workflowId, unitId, ...rest } = input;
       return apiCall(
-        `${base}/api/launchpad/projects/${projectId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/steps`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/steps`,
         { method: "PATCH", body: JSON.stringify(rest) },
+        cookies
+      );
+    }
+
+    case "create_launchpad_workflow": {
+      return apiCall(
+        `${base}/api/launchpad/workflows`,
+        { method: "POST", body: JSON.stringify(input) },
+        cookies
+      );
+    }
+
+    case "set_launchpad_project_visibility": {
+      const { projectId, visibility } = input;
+      return apiCall(
+        `${base}/api/launchpad/projects/${projectId}`,
+        { method: "PATCH", body: JSON.stringify({ visibility }) },
+        cookies
+      );
+    }
+
+    case "set_launchpad_workflow_memory": {
+      const { workflowId, key, value } = input;
+      return apiCall(
+        `${base}/api/launchpad/workflows/${workflowId}/memory/${encodeURIComponent(key as string)}`,
+        { method: "PUT", body: JSON.stringify({ value }) },
+        cookies
+      );
+    }
+
+    case "set_launchpad_run_variable": {
+      const { workflowId, runId, name, value } = input;
+      return apiCall(
+        `${base}/api/launchpad/workflows/${workflowId}/runs/${runId}/variables/${encodeURIComponent(name as string)}`,
+        { method: "PATCH", body: JSON.stringify({ value }) },
         cookies
       );
     }

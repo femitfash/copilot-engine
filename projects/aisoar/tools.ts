@@ -292,12 +292,36 @@ export const READ_TOOLS: Tool[] = [
   {
     name: "list_launchpad_projects",
     description:
-      "List LaunchPad projects with their id, name, department, status, lifecycleStage, and build stage. " +
-      "Use this to resolve a projectId when the user refers to a project by name/department and context.launchpadScope is not present (they're not currently viewing that project's LaunchPad page) — never ask the user to look up and paste a raw project ID themselves.",
+      "List LaunchPad PROJECTS — the parent grouping/naming/visibility container for one or more workflows (a launchpad_projects row, not an individual ai_workflows row). Each result has id, name, slug, visibility ('public': referenceable by any profile under this customer, or 'private': only its owning profile), and workflowCount. Customer-wide: includes the caller's own profile's projects (any visibility) plus public projects from sibling profiles under the same customer. " +
+      "Use this to resolve a projectId when the user refers to a project by name and context.launchpadScope is not present, or before calling list_launchpad_workflows/create_launchpad_workflow — never ask the user to look up and paste a raw project ID themselves.",
     input_schema: {
       type: "object" as const,
       properties: {},
       required: [],
+    },
+  },
+  {
+    name: "list_launchpad_workflows",
+    description:
+      "List the workflows inside one LaunchPad project (id, name, department, status, lifecycleStage, build stage). Use this after list_launchpad_projects has resolved which project the user means, to then resolve a specific workflowId for the other launchpad tools below.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID (from list_launchpad_projects)" },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "search_launchpad_workflows",
+    description:
+      "Substring search across every workflow this customer can see (own profile's, any visibility, plus public workflows from sibling profiles) by name/description. Use this when a user describes wanting something that might already exist ('is there already a workflow that checks X') before proposing to create a new one, or to help them find a workflowId/projectId when they only remember a rough name.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        q: { type: "string", description: "Search text" },
+      },
+      required: ["q"],
     },
   },
   {
@@ -312,10 +336,10 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         runId: { type: "string", description: "Specific run ID to check (omit for the most recent run)" },
       },
-      required: ["projectId"],
+      required: ["workflowId"],
     },
   },
   {
@@ -326,9 +350,9 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
       },
-      required: ["projectId"],
+      required: ["workflowId"],
     },
   },
   {
@@ -341,9 +365,9 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
       },
-      required: ["projectId"],
+      required: ["workflowId"],
     },
   },
   {
@@ -356,11 +380,11 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         runId: { type: "string", description: "Specific run ID (omit for the most recent run)" },
       },
-      required: ["projectId", "unitId"],
+      required: ["workflowId", "unitId"],
     },
   },
   {
@@ -371,11 +395,11 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         limit: { type: "number", description: "Max past runs to return (default 5, capped at 20)" },
       },
-      required: ["projectId", "unitId"],
+      required: ["workflowId", "unitId"],
     },
   },
   {
@@ -400,12 +424,52 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         runId: { type: "string", description: "The run ID the unit's task belongs to" },
         agentId: { type: "string", description: "The unit's assigned agent ID, if known (from diagnose_launchpad_unit's plan.matchedAgentId) — enables the fallback check" },
       },
-      required: ["projectId", "unitId", "runId"],
+      required: ["workflowId", "unitId", "runId"],
+    },
+  },
+  {
+    name: "get_remote_workflow_memory",
+    description:
+      "Read a named value from ANOTHER LaunchPad workflow's long-term memory, by its \"project.workflow\" friendly reference (e.g. \"EDR_on_crowdstrike.check_for_endpoints\" — spaces in the project/workflow name become underscores). Authorization is re-checked live: resolves only within the caller's own customer, and only into a private project if it's owned by the caller's own profile. By convention, a workflow that publishes a completion \"report\" for downstream use does so under memory key \"report\" — read it here with key=\"report\".",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        ref: { type: "string", description: "Dotted \"project.workflow\" reference, e.g. 'EDR_on_crowdstrike.check_for_endpoints'" },
+        key: { type: "string", description: "Memory key to read" },
+      },
+      required: ["ref", "key"],
+    },
+  },
+  {
+    name: "get_launchpad_workflow_memory",
+    description:
+      "Read this workflow's OWN long-term memory — a flat key/value store that survives across runs, written by memory.get/memory.set workflow-rule steps and hand-editable in the Project Memory panel. Omit key to list every entry.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        key: { type: "string", description: "Specific memory key to read (omit to list all entries)" },
+      },
+      required: ["workflowId"],
+    },
+  },
+  {
+    name: "get_launchpad_run_variable",
+    description:
+      "Read a run-scoped variable (set via a run.setVariable step) from one specific Workflow Rule run. Resolve runId first via get_workflow_rule_run_status or get_workflow_rule_runs.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        runId: { type: "string", description: "The run ID (from get_workflow_rule_run_status/get_workflow_rule_runs)" },
+        name: { type: "string", description: "Variable name" },
+      },
+      required: ["workflowId", "runId", "name"],
     },
   },
 ];
@@ -751,7 +815,7 @@ export const WRITE_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID this workflow rule belongs to" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID this workflow rule belongs to" },
         ruleText: { type: "string", description: "Plain-language description of the desired workflow rule" },
         transcript: {
           type: "array",
@@ -765,7 +829,7 @@ export const WRITE_TOOLS: Tool[] = [
           description: "Prior clarifying-question exchange for this rule, if refining an earlier proposal",
         },
       },
-      required: ["projectId", "ruleText"],
+      required: ["workflowId", "ruleText"],
     },
   },
   {
@@ -777,12 +841,12 @@ export const WRITE_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID whose proposed plan should be accepted" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID whose proposed plan should be accepted" },
         isTemplate: { type: "boolean", description: "Save this as a reusable template (default false)" },
         templateName: { type: "string", description: "Template name, if isTemplate is true" },
         templateDescription: { type: "string", description: "Template description, if isTemplate is true" },
       },
-      required: ["projectId"],
+      required: ["workflowId"],
     },
   },
   {
@@ -794,10 +858,10 @@ export const WRITE_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID whose accepted plan should be run" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID whose accepted plan should be run" },
         runId: { type: "string", description: "Optional run ID to reuse (omit to mint a new run)" },
       },
-      required: ["projectId"],
+      required: ["workflowId"],
     },
   },
   {
@@ -809,11 +873,11 @@ export const WRITE_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         capability: { type: "string", description: "The exact unsatisfiedCapabilities string to dismiss, from diagnose_launchpad_unit's plan.unsatisfiedCapabilities" },
       },
-      required: ["projectId", "unitId", "capability"],
+      required: ["workflowId", "unitId", "capability"],
     },
   },
   {
@@ -824,11 +888,11 @@ export const WRITE_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         agentId: { type: "string", description: "New agent ID to assign, or omit/null to clear the assignment" },
       },
-      required: ["projectId", "unitId"],
+      required: ["workflowId", "unitId"],
     },
   },
   {
@@ -841,7 +905,7 @@ export const WRITE_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         steps: {
           type: "array",
@@ -892,7 +956,63 @@ export const WRITE_TOOLS: Tool[] = [
           description: "Current stepIds in order, for optimistic-concurrency checking (recommended)",
         },
       },
-      required: ["projectId", "unitId", "steps"],
+      required: ["workflowId", "unitId", "steps"],
+    },
+  },
+  {
+    name: "create_launchpad_workflow",
+    description:
+      "Add a new workflow to an existing LaunchPad project (resolve projectId first via list_launchpad_projects or search_launchpad_workflows). The workflow name must be unique within that project and cannot contain a \".\" (reserved for the project.workflow reference syntax). Always confirm the project and name with the user before calling this.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID to add this workflow to" },
+        name: { type: "string", description: "Workflow name — unique within the project, no \".\"" },
+        description: { type: "string", description: "Optional description" },
+      },
+      required: ["projectId", "name"],
+    },
+  },
+  {
+    name: "set_launchpad_project_visibility",
+    description:
+      "Change a LaunchPad project's visibility. 'public' (the default) means any profile under this customer can discover and reference this project's workflows via memory.getRemote. 'private' restricts that to the project's own owning profile — existing external references stop resolving immediately once flipped private. Always confirm which setting the user wants and why before calling this, since flipping to private can break another workflow's cross-workflow memory read.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+        visibility: { type: "string", enum: ["public", "private"], description: "New visibility" },
+      },
+      required: ["projectId", "visibility"],
+    },
+  },
+  {
+    name: "set_launchpad_workflow_memory",
+    description:
+      "Set a named value in this workflow's OWN long-term memory (overwrites any existing value for the same key). Key must match ^[A-Za-z_][A-Za-z0-9_]{0,119}$. Confirm the key and value with the user before calling this if it looks like it could overwrite something another workflow depends on reading via memory.getRemote.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        key: { type: "string", description: "Memory key" },
+        value: { description: "Value to store (any JSON-serializable value)" },
+      },
+      required: ["workflowId", "key", "value"],
+    },
+  },
+  {
+    name: "set_launchpad_run_variable",
+    description:
+      "Set a run-scoped variable, visible to every unit/step in that one run for its remainder. Resolve runId first via get_workflow_rule_run_status/get_workflow_rule_runs. Rarely something a user asks for directly — usually only relevant while debugging a specific run's data flow.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        runId: { type: "string", description: "The run ID" },
+        name: { type: "string", description: "Variable name" },
+        value: { description: "Value to store (any JSON-serializable value)" },
+      },
+      required: ["workflowId", "runId", "name", "value"],
     },
   },
   {
