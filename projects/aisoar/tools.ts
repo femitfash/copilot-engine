@@ -472,6 +472,49 @@ export const READ_TOOLS: Tool[] = [
       required: ["workflowId", "runId", "name"],
     },
   },
+  {
+    name: "get_iam_role_export",
+    description:
+      "Export IAM role definitions with user/permission counts. Unions AISOAR's own DB-backed RBAC roles with a connector-sourced layer (Azure AD/Entra ID directory roles, or Okta admin role assignees) when one of those is configured on Connections — the DB stays the source of truth.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_iam_mfa_audit",
+    description:
+      "Audit MFA enrollment across user accounts — real DB-backed enrollment counts (TOTP/WebAuthn/recovery codes), plus a Microsoft Graph credentialUserRegistrationDetails comparison when Azure AD is configured on Connections.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_iam_privilege_audit",
+    description:
+      "Audit privileged accounts (admin/superadmin/root roles) for excessive-permission risk, based on real user/role assignments.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "query_siem",
+    description:
+      "Run a read-only search query against the configured SIEM connector — Splunk (SPL), Microsoft Sentinel (KQL over Log Analytics), or Elastic (query string), whichever is configured on Connections, in that priority order.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string", description: "Search query in the configured provider's language (Splunk SPL, Sentinel KQL, or an Elastic query string)" },
+        limit: { type: "number", description: "Max records to return (default 100)" },
+      },
+      required: ["query"],
+    },
+  },
 ];
 
 // ─── WRITE Tools (queued for user approval) ─────────────────────────────────
@@ -1035,6 +1078,35 @@ export const WRITE_TOOLS: Tool[] = [
         notifyOnComplete: { type: "boolean", description: "Notify when each run completes (default false)" },
       },
       required: ["name", "testType", "frequency"],
+    },
+  },
+  {
+    name: "isolate_edr_host",
+    description:
+      "Isolate (or release) an endpoint via the configured EDR connector (CrowdStrike Falcon, SentinelOne, Microsoft Defender for Endpoint, or Carbon Black). Requires human approval before it executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        host: { type: "string", description: "Hostname or IP of the endpoint (use this or deviceId)" },
+        deviceId: { type: "string", description: "Vendor-specific device/agent/machine ID (use this or host)" },
+        action: { type: "string", enum: ["isolate", "unisolate"], description: "isolate to contain the host, unisolate to release it (default isolate)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "revoke_iam_sessions",
+    description:
+      "Revoke a user's active sessions — AISOAR's own session store, plus the configured IAM connector (Azure AD/Entra ID via Graph revokeSignInSessions, or Okta via DELETE /sessions) when the user's email/UPN is supplied. Requires human approval before it executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        user_id: { type: "string", description: "Internal AISOAR user ID" },
+        email: { type: "string", description: "User's email/UPN — required to also revoke sessions on a configured Azure AD/Okta connector" },
+        session_id: { type: "string", description: "Specific session ID to revoke (omit to revoke all of this user's sessions)" },
+        reason: { type: "string", description: "Reason for revocation, e.g. 'compromised_credentials'" },
+      },
+      required: [],
     },
   },
 ];

@@ -29,11 +29,19 @@ const COPILOT_AGENT_ID = "agent.copilot_chat_assistant";
 const COPILOT_AGENT_NAME = "Copilot Chat Assistant";
 
 /**
- * Governed tool ids Copilot's WRITE tools call via executeGovernedTool().
+ * Governed tool ids Copilot's tools call via executeGovernedTool() — both the
+ * approval-gated WRITE tools and the READ tools that route through the same
+ * governed path (governedToolExecutor.ts honors each tool's own
+ * `approvalRequired: false` and auto-executes, so a READ tool here still
+ * satisfies copilot-engine's "READ tools execute immediately" contract).
  * Mirrored in AISOAR's shared/agentManifest.ts as this agent's capabilityEnvelope
  * so requireAutonomy() denies anything Copilot doesn't actually expose.
  */
-export const COPILOT_GOVERNED_WRITE_TOOL_IDS = ["sast.run", "dast.run", "report.generate"];
+export const COPILOT_GOVERNED_WRITE_TOOL_IDS = [
+  "sast.run", "dast.run", "report.generate",
+  "iam.export.roles", "iam.session.revoke", "iam.mfa.audit", "iam.privilege.audit",
+  "edr.isolate.host", "siem.query",
+];
 
 function buildGovernedCtx(ctx: ToolExecutionContext, toolName: string): Record<string, unknown> {
   return {
@@ -518,6 +526,40 @@ export async function executeReadTool(
       return truncate(JSON.stringify({ source: agentId ? "mission_and_agent" : "mission_only", missionId, approvals: [] }));
     }
 
+    // These four are governed tool ids (iamTools.ts / agentToolHandlers/siem.ts),
+    // routed in-process through executeGovernedTool rather than a REST round
+    // trip. Each has approvalRequired:false in toolRegistry.ts, so
+    // governedToolExecutor auto-executes them — consistent with copilot-engine's
+    // "READ tools execute immediately" contract despite going through the
+    // governed path.
+    case "get_iam_role_export": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      const result = await executeGovernedTool("iam.export.roles", {}, buildGovernedCtx(ctx, toolName));
+      return truncate(JSON.stringify(result));
+    }
+
+    case "get_iam_mfa_audit": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      const result = await executeGovernedTool("iam.mfa.audit", {}, buildGovernedCtx(ctx, toolName));
+      return truncate(JSON.stringify(result));
+    }
+
+    case "get_iam_privilege_audit": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      const result = await executeGovernedTool("iam.privilege.audit", {}, buildGovernedCtx(ctx, toolName));
+      return truncate(JSON.stringify(result));
+    }
+
+    case "query_siem": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      const result = await executeGovernedTool(
+        "siem.query",
+        { query: input.query, limit: input.limit },
+        buildGovernedCtx(ctx, toolName)
+      );
+      return truncate(JSON.stringify(result));
+    }
+
     default:
       return JSON.stringify({ error: `Unknown tool: ${toolName}` });
   }
@@ -836,6 +878,24 @@ export async function executeWriteTool(
         `${base}/api/test-scheduler`,
         { method: "POST", body: JSON.stringify(input) },
         cookies
+      );
+    }
+
+    case "isolate_edr_host": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      return executeGovernedTool(
+        "edr.isolate.host",
+        { host: input.host, deviceId: input.deviceId, action: input.action || "isolate" },
+        buildGovernedCtx(ctx, toolName)
+      );
+    }
+
+    case "revoke_iam_sessions": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      return executeGovernedTool(
+        "iam.session.revoke",
+        { user_id: input.user_id, email: input.email, session_id: input.session_id, reason: input.reason },
+        buildGovernedCtx(ctx, toolName)
       );
     }
 
