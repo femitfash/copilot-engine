@@ -40,7 +40,7 @@ const COPILOT_AGENT_NAME = "Copilot Chat Assistant";
 export const COPILOT_GOVERNED_WRITE_TOOL_IDS = [
   "sast.run", "dast.run", "report.generate",
   "iam.export.roles", "iam.session.revoke", "iam.mfa.audit", "iam.privilege.audit",
-  "edr.isolate.host", "siem.query",
+  "edr.isolate.host", "siem.query", "notification.email.send",
 ];
 
 function buildGovernedCtx(ctx: ToolExecutionContext, toolName: string): Record<string, unknown> {
@@ -895,6 +895,15 @@ export async function executeWriteTool(
       return executeGovernedTool(
         "iam.session.revoke",
         { user_id: input.user_id, email: input.email, session_id: input.session_id, reason: input.reason },
+        buildGovernedCtx(ctx, toolName)
+      );
+    }
+
+    case "send_email_notification": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      return executeGovernedTool(
+        "notification.email.send",
+        { to: input.to, subject: input.subject, body: input.body, csvContent: input.csvContent, csvFilename: input.csvFilename },
         buildGovernedCtx(ctx, toolName)
       );
     }

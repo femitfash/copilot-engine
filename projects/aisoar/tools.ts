@@ -1109,6 +1109,22 @@ export const WRITE_TOOLS: Tool[] = [
       required: [],
     },
   },
+  {
+    name: "send_email_notification",
+    description:
+      "Send an email notification or report through the tenant's configured SMTP/SendGrid relay, optionally with a CSV attachment. Requires human approval before it executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        to: { type: "string", description: "Recipient email address" },
+        subject: { type: "string", description: "Email subject line" },
+        body: { type: "string", description: "Plain-text email body (omit for an empty-body notification)" },
+        csvContent: { type: "string", description: "Optional CSV report content to attach" },
+        csvFilename: { type: "string", description: "Filename for the CSV attachment (default 'report.csv')" },
+      },
+      required: ["to", "subject"],
+    },
+  },
 ];
 
 // ─── Exports ────────────────────────────────────────────────────────────────
