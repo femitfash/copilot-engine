@@ -153,6 +153,43 @@ async function apiCallJson<T = any>(
   }
 }
 
+// Same auth/CSRF handling as apiCallJson, but preserves {status, message} on
+// failure instead of collapsing to null. Used only by diagnose_launchpad_unit
+// below, which chains multiple lookups and must tell a genuine backend error
+// (403/404/500, or a network failure) apart from a truly empty result —
+// apiCallJson's null return conflates the two, which previously produced
+// confidently-wrong messages ("no runs yet", "never dispatched") for what
+// were actually auth/lookup failures.
+async function apiCallJsonChecked<T = any>(
+  url: string,
+  options: RequestInit,
+  cookies?: string
+): Promise<{ data: T | null; status: number | null; message: string | null }> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+  if (cookies) headers["Cookie"] = cookies;
+  const baseUrl = new URL(url);
+  headers["Origin"] = baseUrl.origin;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { ...options, headers, credentials: "include" });
+  } catch (err: any) {
+    return { data: null, status: null, message: `Network error calling ${url}: ${err?.message ?? String(err)}` };
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    return { data: null, status: res.status, message: `API call to ${url} failed (${res.status}): ${text.substring(0, 200)}` };
+  }
+  try {
+    return { data: JSON.parse(text) as T, status: res.status, message: null };
+  } catch {
+    return { data: null, status: res.status, message: `API call to ${url} returned invalid JSON.` };
+  }
+}
+
 // Mirrors missionIdFor() in AISOAR's server/services/launchpadWorkflowRuleRunner.ts —
 // keep in sync if that format ever changes.
 function launchpadMissionId(workflowId: string, runId: string, unitId: string): string {
@@ -408,12 +445,15 @@ export async function executeReadTool(
       let runId = input.runId as string | undefined;
 
       if (!runId) {
-        const runsData = await apiCallJson<{ runs?: Array<{ runId: string }> }>(
+        const runsResult = await apiCallJsonChecked<{ runs?: Array<{ runId: string }> }>(
           `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/runs`,
           { method: "GET" },
           cookies
         );
-        runId = runsData?.runs?.[0]?.runId;
+        if (runsResult.message) {
+          return truncate(JSON.stringify({ error: true, message: `Could not look up runs for this workflow (backend error, not "no runs"): ${runsResult.message}` }));
+        }
+        runId = runsResult.data?.runs?.[0]?.runId;
         if (!runId) {
           return truncate(JSON.stringify({ error: true, message: "This project has no Workflow Rule runs yet." }));
         }
@@ -429,18 +469,29 @@ export async function executeReadTool(
         cookies
       );
 
-      const [state, project] = await Promise.all([
-        apiCallJson<{ units?: any[] }>(
+      const [stateResult, projectResult] = await Promise.all([
+        apiCallJsonChecked<{ units?: any[] }>(
           `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/state?runId=${encodeURIComponent(runId)}`,
           { method: "GET" },
           cookies
         ),
-        apiCallJson<{ config?: { workflowRule?: { plan?: { units?: any[] } } } }>(
+        apiCallJsonChecked<{ config?: { workflowRule?: { plan?: { units?: any[] } } } }>(
           `${base}/api/launchpad/workflows/${workflowId}`,
           { method: "GET" },
           cookies
         ),
       ]);
+      if (stateResult.message) {
+        return truncate(JSON.stringify({ error: true, message: `Could not load run state for run ${runId} (backend error): ${stateResult.message}` }));
+      }
+      const state = stateResult.data;
+      const project = projectResult.data;
+      // projectResult failing is non-fatal (plan/config is supplementary, same
+      // as the existing null-safe optional chaining below) but still worth
+      // surfacing rather than silently omitting the plan block.
+      const planLookupWarning = projectResult.message
+        ? `Note: could not load this workflow's plan/config, so step/agent details below may be incomplete: ${projectResult.message}`
+        : undefined;
 
       const runtimeUnit = state?.units?.find((u) => u.unitId === unitId);
       if (!runtimeUnit) {
@@ -448,12 +499,15 @@ export async function executeReadTool(
         // check whether the unit actually ran under a *different* run. Without this, a stale or
         // mismatched runId reads to the model as "no execution context", even when a real failure
         // (e.g. a tool_unattested governed-execution block) is sitting in a more recent run.
-        const history = await apiCallJson<{ history?: Array<{ runId: string; startedAt: string; taskStatus: string; error: string | null; result: unknown }> }>(
+        const historyResult = await apiCallJsonChecked<{ history?: Array<{ runId: string; startedAt: string; taskStatus: string; error: string | null; result: unknown }> }>(
           `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId)}/run-history?limit=5`,
           { method: "GET" },
           cookies
         );
-        const lastRun = history?.history?.[0];
+        if (historyResult.message) {
+          return truncate(JSON.stringify({ error: true, message: `Unit ${unitId} has no task in run ${runId}. Could not check its run history either (backend error): ${historyResult.message}` }));
+        }
+        const lastRun = historyResult.data?.history?.[0];
         if (lastRun) {
           return truncate(
             JSON.stringify({
@@ -479,6 +533,7 @@ export async function executeReadTool(
         JSON.stringify({
           runId,
           ...runtimeUnit,
+          ...(planLookupWarning ? { planLookupWarning } : {}),
           plan: planUnit
             ? {
                 steps: planUnit.steps,
