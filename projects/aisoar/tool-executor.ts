@@ -444,7 +444,34 @@ export async function executeReadTool(
 
       const runtimeUnit = state?.units?.find((u) => u.unitId === unitId);
       if (!runtimeUnit) {
-        return truncate(JSON.stringify({ error: true, message: `Unit ${unitId} has no task in run ${runId}.` }));
+        // A real runId was given but this unit has no task instance in it — before giving up,
+        // check whether the unit actually ran under a *different* run. Without this, a stale or
+        // mismatched runId reads to the model as "no execution context", even when a real failure
+        // (e.g. a tool_unattested governed-execution block) is sitting in a more recent run.
+        const history = await apiCallJson<{ history?: Array<{ runId: string; startedAt: string; taskStatus: string; error: string | null; result: unknown }> }>(
+          `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId)}/run-history?limit=5`,
+          { method: "GET" },
+          cookies
+        );
+        const lastRun = history?.history?.[0];
+        if (lastRun) {
+          return truncate(
+            JSON.stringify({
+              note: `Unit ${unitId} has no task in the requested run ${runId}; showing its most recent actual run (${lastRun.runId}) instead.`,
+              runId: lastRun.runId,
+              requestedRunId: runId,
+              status: lastRun.taskStatus,
+              error: lastRun.error,
+              result: lastRun.result,
+            })
+          );
+        }
+        return truncate(
+          JSON.stringify({
+            error: true,
+            message: `Unit ${unitId} has no task in run ${runId}, and no task in its last 5 runs either — it has never actually dispatched.`,
+          })
+        );
       }
       const planUnit = project?.config?.workflowRule?.plan?.units?.find((u: any) => u.unitId === unitId);
 
