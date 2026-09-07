@@ -1032,7 +1032,7 @@ export const WRITE_TOOLS: Tool[] = [
   {
     name: "set_launchpad_workflow_memory",
     description:
-      "Set a named value in this workflow's OWN long-term memory (overwrites any existing value for the same key). Key must match ^[A-Za-z_][A-Za-z0-9_]{0,119}$. Confirm the key and value with the user before calling this if it looks like it could overwrite something another workflow depends on reading via memory.getRemote.",
+      "Set a named value in this workflow's OWN long-term memory (overwrites any existing value for the same key). Key must match ^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$ (max 120 chars) — dot-separated segments are allowed for namespacing, e.g. jira.critical_findings.issue_ids. Confirm the key and value with the user before calling this if it looks like it could overwrite something another workflow depends on reading via memory.getRemote.",
     input_schema: {
       type: "object" as const,
       properties: {
