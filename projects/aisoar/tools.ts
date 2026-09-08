@@ -689,6 +689,31 @@ export const WRITE_TOOLS: Tool[] = [
     },
   },
   {
+    name: "render_report",
+    description:
+      "Render already-drafted narrative text into a professionally branded, letterhead-styled PDF + HTML security " +
+      "report (using the tenant's company profile logo/address). Choose from 4 built-in themes: `executive_classic` " +
+      "and `executive_modern` (polished, leadership-facing) or `technical_detailed` and `technical_compact` (denser, " +
+      "analyst-facing). This does not draft content itself — pass narrative text you already have (e.g. the output of " +
+      "generate_report, or text the user supplied) as `bodyMarkdown`.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        title: { type: "string", description: "Report title" },
+        bodyMarkdown: {
+          type: "string",
+          description: "The narrative content to render, as Markdown (## headings, **bold**, - bullets, plain paragraphs).",
+        },
+        theme: {
+          type: "string",
+          enum: ["executive_classic", "executive_modern", "technical_detailed", "technical_compact"],
+          description: "Visual theme. Defaults to executive_classic if omitted.",
+        },
+      },
+      required: ["title", "bodyMarkdown"],
+    },
+  },
+  {
     name: "generate_document",
     description:
       "Generate a compliance document using AI (SSP, policy, procedure, assessment report)",

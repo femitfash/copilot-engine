@@ -38,7 +38,7 @@ const COPILOT_AGENT_NAME = "Copilot Chat Assistant";
  * so requireAutonomy() denies anything Copilot doesn't actually expose.
  */
 export const COPILOT_GOVERNED_WRITE_TOOL_IDS = [
-  "sast.run", "dast.run", "report.generate",
+  "sast.run", "dast.run", "report.generate", "report.render",
   "iam.export.roles", "iam.session.revoke", "iam.mfa.audit", "iam.privilege.audit",
   "edr.isolate.host", "siem.query", "notification.email.send",
 ];
@@ -769,6 +769,19 @@ export async function executeWriteTool(
       return executeGovernedTool(
         "report.generate",
         { query, reportType },
+        buildGovernedCtx(ctx, toolName)
+      );
+    }
+
+    case "render_report": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      return executeGovernedTool(
+        "report.render",
+        {
+          title: input.title,
+          bodyMarkdown: input.bodyMarkdown,
+          theme: input.theme,
+        },
         buildGovernedCtx(ctx, toolName)
       );
     }
