@@ -371,6 +371,20 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "list_active_dynamic_tools",
+    description:
+      "List every dynamic capability currently active (or pending credentials) for this tenant across ALL LaunchPad workflows — not scoped to one workflow like get_launchpad_dynamic_tools. " +
+      "Each entry reports kind (recipe/connector/function), status, healthStatus, and — when present — sourceTemplateId (this one was materialized from a pre-built, pre-vetted pattern instead of freshly LLM-authored) or a connectorId starting with 'custom_' (this one was auto-created from a saved Connections-page custom API endpoint). " +
+      "Use this for 'what dynamic tools/automations do I have', 'what can I automate with my configured connectors', or to check whether a saved custom API endpoint became a usable tool.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        kind: { type: "string", enum: ["recipe", "connector", "function"], description: "Optional filter by tool kind" },
+      },
+      required: [],
+    },
+  },
+  {
     name: "diagnose_launchpad_unit",
     description:
       "Diagnose ONE Workflow Rule unit in depth — the first tool to call when a user opens a specific blocked/failed/skipped unit and asks 'why' or 'fix this'. " +
@@ -854,7 +868,8 @@ export const WRITE_TOOLS: Tool[] = [
       "Propose a LaunchPad Workflow Rule for a project by describing the desired detect/remediate/verify/escalate flow in plain language. " +
       "The AI decomposes it into a candidate plan of work units (e.g. detect a condition, attempt remediation, verify it worked, escalate to a ticket or notify a human on failure). " +
       "This only proposes a candidate plan for the user to review — it does not create or run anything. Use accept_workflow_rule once the user approves the plan, then run_workflow_rule to execute it. " +
-      "Example: 'find hosts missing a Vuln Mgmt agent, try to reinitialize it, escalate to a ticket if that fails, notify a human'.",
+      "Example: 'find hosts missing a Vuln Mgmt agent, try to reinitialize it, escalate to a ticket if that fails, notify a human'. " +
+      "On the FIRST call for a rule (not a clarifying-question reply), the result may include similarWorkflows — one or more existing workflow rules elsewhere in the tenant whose description is identical or close to this one. When similarWorkflows contains an entry with matchedVia \"exact\", decomposition was skipped entirely (candidatePlan is null) — tell the user plainly that an identical rule already exists (name it and its project) and ask whether to reuse it, clone it (apply_similar_workflow_rule), or proceed with a fresh plan anyway (call propose_workflow_rule again with forceDecompose: true). A \"keyword\" or \"embedding\" match means decomposition proceeded normally but a related rule exists — mention it as an FYI, it does not block anything.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -871,8 +886,29 @@ export const WRITE_TOOLS: Tool[] = [
           },
           description: "Prior clarifying-question exchange for this rule, if refining an earlier proposal",
         },
+        forceDecompose: {
+          type: "boolean",
+          description: "Set true to bypass an exact-duplicate match from a prior call and decompose a fresh plan anyway — only after the user has explicitly said to proceed despite the identical existing rule.",
+        },
       },
       required: ["workflowId", "ruleText"],
+    },
+  },
+  {
+    name: "apply_similar_workflow_rule",
+    description:
+      "Apply an existing workflow rule found by propose_workflow_rule's similarWorkflows to THIS project's workflow, instead of authoring a new plan from scratch. " +
+      "mode \"reuse\": no changes are made here — just tells the user the other workflow's id/name so they can go work with it directly (use this when the user wants to use the OTHER workflow, not this one). " +
+      "mode \"clone\": copies the other workflow rule's plan into THIS workflow (replacing any existing draft plan here) so the user can review and adjust it, then accept_workflow_rule as normal — this workflow's own rule description (ruleText) is left untouched, only the plan changes. " +
+      "Always confirm which existing workflow the user means (by name) before calling this, especially if similarWorkflows had more than one match.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID to apply the clone into (mode \"clone\"), or the workflow the user is currently working in (mode \"reuse\")" },
+        sourceWorkflowId: { type: "string", description: "The existing workflow ID to reuse/clone from — from propose_workflow_rule's similarWorkflows" },
+        mode: { type: "string", enum: ["reuse", "clone"], description: "\"reuse\" just surfaces the other workflow for navigation; \"clone\" copies its plan into workflowId" },
+      },
+      required: ["workflowId", "sourceWorkflowId", "mode"],
     },
   },
   {
@@ -1123,6 +1159,18 @@ export const WRITE_TOOLS: Tool[] = [
         csvFilename: { type: "string", description: "Filename for the CSV attachment (default 'report.csv')" },
       },
       required: ["to", "subject"],
+    },
+  },
+  {
+    name: "test_dynamic_tool",
+    description:
+      "Re-run the on-demand dry-run test for one connector-kind dynamic tool (including a custom-API-derived one) against its own saved fixture, to confirm it still works. Requires human approval before it executes because it issues a real HTTP call to the underlying vendor/custom endpoint.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        dynamicToolId: { type: "string", description: "The dynamic tool's row id, from list_active_dynamic_tools or get_launchpad_dynamic_tools" },
+      },
+      required: ["dynamicToolId"],
     },
   },
 ];

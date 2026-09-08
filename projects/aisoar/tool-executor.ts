@@ -439,6 +439,16 @@ export async function executeReadTool(
       );
     }
 
+    case "list_active_dynamic_tools": {
+      const kind = input.kind as string | undefined;
+      const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+      return apiCall(
+        `${base}/api/launchpad/dynamic-tools${qs}`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
     case "diagnose_launchpad_unit": {
       const workflowId = input.workflowId as string;
       const unitId = input.unitId as string;
@@ -875,6 +885,32 @@ export async function executeWriteTool(
       );
     }
 
+    case "apply_similar_workflow_rule": {
+      const { workflowId, sourceWorkflowId, mode } = input;
+      const source = await apiCallJson<{ id?: string; name?: string; config?: { workflowRule?: { plan?: unknown } | null } }>(
+        `${base}/api/launchpad/workflows/${sourceWorkflowId}`,
+        { method: "GET" },
+        cookies
+      );
+      if (mode === "reuse") {
+        return truncate(JSON.stringify({
+          reused: true,
+          workflowId: source?.id ?? sourceWorkflowId,
+          workflowName: source?.name ?? null,
+          message: `No changes made here — go to workflow "${source?.name ?? sourceWorkflowId}" (id ${source?.id ?? sourceWorkflowId}) to work with it directly.`,
+        }));
+      }
+      const plan = source?.config?.workflowRule?.plan;
+      if (!plan) {
+        return truncate(JSON.stringify({ error: true, message: "That workflow rule has no plan to clone." }));
+      }
+      return apiCall(
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule`,
+        { method: "PATCH", body: JSON.stringify({ plan }) },
+        cookies
+      );
+    }
+
     case "accept_workflow_rule": {
       const { workflowId, ...rest } = input;
       return apiCall(
@@ -987,6 +1023,15 @@ export async function executeWriteTool(
         "notification.email.send",
         { to: input.to, subject: input.subject, body: input.body, csvContent: input.csvContent, csvFilename: input.csvFilename },
         buildGovernedCtx(ctx, toolName)
+      );
+    }
+
+    case "test_dynamic_tool": {
+      const dynamicToolId = input.dynamicToolId as string;
+      return apiCall(
+        `${base}/api/launchpad/dynamic-tools/${dynamicToolId}/test`,
+        { method: "POST" },
+        cookies
       );
     }
 
