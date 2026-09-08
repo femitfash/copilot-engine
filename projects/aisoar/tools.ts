@@ -895,6 +895,41 @@ export const WRITE_TOOLS: Tool[] = [
     },
   },
   {
+    name: "propose_workflow_rule_manual_guide",
+    description:
+      "Decompose a described LaunchPad Workflow Rule use case exactly like propose_workflow_rule (same decomposition engine, same clarifying-question/similarWorkflows behavior) — but for a user who wants to build the rule THEMSELVES in the Workflow Rule editor, not have the AI build and run it. " +
+      "Use this instead of propose_workflow_rule when the user asks for manual/DIY steps, e.g. 'give me the steps to build this myself', 'how do I set this up in the editor', 'walk me through creating this rule by hand'. " +
+      "Present any clarifyingQuestions to the user exactly as with propose_workflow_rule. Once a candidatePlan is returned with no more clarifying questions, the client renders a step-by-step manual guide directly from the plan — do not narrate the plan yourself and do not call accept_workflow_rule or run_workflow_rule for this thread; this tool never creates or runs anything, only drafts an advisory plan to derive instructions from. " +
+      "If the user changes their mind and asks the AI to build it instead, switch to accept_workflow_rule against the same workflowId (the draft plan this call produced is reusable).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID this workflow rule belongs to" },
+        ruleText: { type: "string", description: "Plain-language description of the desired workflow rule (or, on a reply turn, the answer to the last clarifying question)" },
+        transcript: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              role: { type: "string", enum: ["user", "assistant"] },
+              content: { type: "string" },
+            },
+          },
+          description: "Prior clarifying-question exchange for this rule, if refining an earlier proposal",
+        },
+        isReply: {
+          type: "boolean",
+          description: "Set true when ruleText is an answer to a prior clarifying question rather than the opening use-case description — preserves the original ruleText instead of overwriting it.",
+        },
+        forceDecompose: {
+          type: "boolean",
+          description: "Set true to bypass an exact-duplicate match from a prior call and decompose a fresh plan anyway — only after the user has explicitly said to proceed despite the identical existing rule.",
+        },
+      },
+      required: ["workflowId", "ruleText"],
+    },
+  },
+  {
     name: "apply_similar_workflow_rule",
     description:
       "Apply an existing workflow rule found by propose_workflow_rule's similarWorkflows to THIS project's workflow, instead of authoring a new plan from scratch. " +

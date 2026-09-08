@@ -885,6 +885,27 @@ export async function executeWriteTool(
       );
     }
 
+    // Same propose endpoint as propose_workflow_rule, but returns the parsed
+    // result untruncated (via apiCallJsonChecked, not apiCall's 8000-char
+    // truncate) because the client renders candidatePlan/clarifyingQuestions
+    // structurally instead of just glancing at a prose summary — truncation
+    // would silently corrupt a multi-unit plan mid-JSON. apiCallJsonChecked
+    // (not the plain apiCallJson used elsewhere) so a real backend failure
+    // surfaces a message instead of collapsing to a bare null, matching why
+    // diagnose_launchpad_unit moved off apiCallJson for the same reason.
+    case "propose_workflow_rule_manual_guide": {
+      const { workflowId, ...rest } = input;
+      const { data, status, message } = await apiCallJsonChecked(
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/propose`,
+        { method: "POST", body: JSON.stringify(rest) },
+        cookies
+      );
+      if (data === null) {
+        return { error: true, status, message: message ?? "Failed to propose workflow rule." };
+      }
+      return data;
+    }
+
     case "apply_similar_workflow_rule": {
       const { workflowId, sourceWorkflowId, mode } = input;
       const source = await apiCallJson<{ id?: string; name?: string; config?: { workflowRule?: { plan?: unknown } | null } }>(
