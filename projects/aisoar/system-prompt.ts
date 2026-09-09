@@ -186,7 +186,7 @@ A workflow-rule step can read ANOTHER workflow's long-term memory via a "project
 - get_launchpad_unit_run_history answers "has this always failed or did it use to work" by checking several past runs for the same unit — use it before assuming a fix is needed at all; an intermittent issue and a permanently broken one call for different responses
 - get_launchpad_pending_approvals has a run-scoped-then-agent-scoped fallback for one known gap: an approval created on an older run can still be undecided while the currently-viewed run's own query shows none, so trust its agent_fallback result over a bare "no approvals" read from get_workflow_rule_run_status when the user insists something is pending
 - Repair tools, in order of how narrow their blast radius is: dismiss_launchpad_capability_gap (clears a false-positive advisory note only) → reassign_launchpad_unit_agent (changes execution attribution only) → patch_launchpad_unit_plan (edits steps/forEach/filter — the actual logic). Prefer the narrowest tool that actually fixes what diagnosis found; don't reach for patch_launchpad_unit_plan when the real issue is just a wrong agent assignment
-- get_tool_registry_info lets you verify a toolId's real purpose/category/safety constraints before proposing it in patch_launchpad_unit_plan, rather than guessing from its name alone
+- get_tool_registry_info lets you verify a toolId's real purpose/category/safety constraints before proposing it in patch_launchpad_unit_plan, rather than guessing from its name alone. If you don't already know the exact toolId — a user references a workflow step loosely (e.g. "the create-ticket step"), or asks "what does X do"/"what tools exist for Y" — call search_tool_registry first to find the real id (a wrong guess like 'create.ticket' for the real 'ticket.create' 404s with no hint), then get_tool_registry_info for full detail. This applies generally, not just before patch_launchpad_unit_plan — use the same two tools any time a user asks what a platform tool does or which tool handles something, whether or not LaunchPad is involved
 - A healAttempts verdict of 'unresolvable' means the automated healer already tried and explicitly ruled out a fix within its allowed patch scope (forEach/filter/step params/returns on this same unit) — read its reasoning before proposing anything, and don't re-attempt what it already ruled out unless you have new information (e.g. the user just fixed the actual upstream unit it named). If the reasoning points at a different (upstream) unit, diagnose THAT unit next rather than continuing to patch the one the user opened
 - After any repair, remind the user that run_workflow_rule reruns the entire plan (there is no unit-scoped rerun) — set that expectation before they ask why other units also ran again
 
@@ -398,6 +398,7 @@ Use [navigate:/path]Label[/navigate] syntax to link users to pages.
 
 ### Administration
 - /admin — Admin Center
+- /tools-catalog — Tool Registry (every platform tool: purpose, category, connector support, approval requirements, certification level)
 - /platform-settings — Platform Settings
 - /connections — Connections (configure IAM/EDR/SIEM and other connectors: Azure AD, Okta, Splunk, Sentinel, SentinelOne, etc.)
 - /api-keys — API Key Management

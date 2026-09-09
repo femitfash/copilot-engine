@@ -581,6 +581,48 @@ export async function executeReadTool(
       );
     }
 
+    case "search_tool_registry": {
+      const search = (input.search as string | undefined)?.trim().toLowerCase();
+      const category = (input.category as string | undefined)?.trim().toLowerCase();
+      if (!search && !category) {
+        // No filter given — hand back categories (small, always safe) as a
+        // browsing starting point rather than every one of the 400+ tools.
+        return apiCall(`${base}/api/tools/categories`, { method: "GET" }, cookies);
+      }
+      const tools = await apiCallJson<any[]>(`${base}/api/tools/inventory`, { method: "GET" }, cookies);
+      if (!tools) {
+        return truncate(JSON.stringify({ error: "Could not load tool registry" }));
+      }
+      const matches = tools.filter((t) => {
+        if (category && !String(t.category ?? "").toLowerCase().includes(category)) return false;
+        if (search) {
+          const haystack = `${t.id ?? ""} ${t.name ?? ""} ${t.description ?? ""}`.toLowerCase();
+          if (!haystack.includes(search)) return false;
+        }
+        return true;
+      });
+      // Full tool records (commonParams/commonReturns/safetyConstraints etc.) are too large to
+      // list many of at once within MAX_RESULT_SIZE — slim to the fields useful for picking the
+      // right toolId, then call get_tool_registry_info for the full record on the chosen one.
+      const MAX_LISTED = 25;
+      const slim = matches.slice(0, MAX_LISTED).map((t) => ({
+        id: t.id,
+        name: t.name,
+        category: t.category,
+        description: t.description,
+        executionState: t.executionState,
+        supportsConnector: t.supportsConnector,
+        allowedConnectors: t.allowedConnectors,
+      }));
+      return truncate(
+        JSON.stringify({
+          matchCount: matches.length,
+          tools: slim,
+          note: matches.length > MAX_LISTED ? `${matches.length - MAX_LISTED} more matched but were omitted — narrow the search or category to see them` : undefined,
+        })
+      );
+    }
+
     case "get_module_doc": {
       const id = input.id as string | undefined;
       if (id) {

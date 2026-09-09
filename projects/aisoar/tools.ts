@@ -430,6 +430,21 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "search_tool_registry",
+    description:
+      "Discover tool(s) in the platform's tool registry (400+ entries) when you don't already know the exact toolId — by keyword against id/name/description, or by category. " +
+      "Use this BEFORE get_tool_registry_info whenever a user references a tool loosely (a workflow step's label like 'create-ticket', a vague description like 'the Jira ticket tool', or 'what tools exist for X') — guessing at a toolId (e.g. 'create.ticket' instead of the real 'ticket.create') returns a 404 from get_tool_registry_info with no hint at the correct id, so search first, then look up the exact match for full detail. " +
+      "Omit both search and category to get the list of categories with counts instead of individual tools, as a starting point for browsing.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        search: { type: "string", description: "Keyword to match against tool id, name, or description, e.g. 'ticket', 'jira', 'sast'" },
+        category: { type: "string", description: "Tool category to filter by (or browse), e.g. 'Incident Response'. Get valid values by calling with no arguments first." },
+      },
+      required: [],
+    },
+  },
+  {
     name: "get_module_doc",
     description:
       "Fetch the platform's own in-product documentation for one module — its overview, step-by-step how-to-use, real tool/connector lists, and any referenceTables spelling out fixed option vocabularies (e.g. filter operators, report themes, work-unit kinds). " +
