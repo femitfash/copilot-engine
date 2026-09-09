@@ -1,3 +1,5 @@
+import { COPILOT_WRITE_TOOLS_ENABLED } from "./tools";
+
 export interface ToolExecutionContext {
   /** Raw `Cookie` header, forwarded for READ-tool HTTP calls only. */
   userToken: string;
