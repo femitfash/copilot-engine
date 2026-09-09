@@ -581,6 +581,24 @@ export async function executeReadTool(
       );
     }
 
+    case "get_module_doc": {
+      const id = input.id as string | undefined;
+      if (id) {
+        return apiCall(
+          `${base}/api/module-docs/${encodeURIComponent(id)}`,
+          { method: "GET" },
+          cookies
+        );
+      }
+      const catalog = await apiCallJson<{ modules?: { id: string; name: string; domain: string; overview: string }[] }>(
+        `${base}/api/module-docs`,
+        { method: "GET" },
+        cookies
+      );
+      const modules = (catalog?.modules ?? []).map((m) => ({ id: m.id, name: m.name, domain: m.domain, overview: m.overview }));
+      return truncate(JSON.stringify({ modules }));
+    }
+
     case "get_launchpad_pending_approvals": {
       const workflowId = input.workflowId as string;
       const unitId = input.unitId as string;

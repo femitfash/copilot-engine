@@ -430,6 +430,20 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "get_module_doc",
+    description:
+      "Fetch the platform's own in-product documentation for one module — its overview, step-by-step how-to-use, real tool/connector lists, and any referenceTables spelling out fixed option vocabularies (e.g. filter operators, report themes, work-unit kinds). " +
+      "Use id 'platform:launchpad-workflow-rules' for anything about LaunchPad Workflow Rules — filter condition operators, work unit kinds, step onError policy, forEach loop mode, deliverable kinds, ticket routing, connector binding, approval requirements, or report themes (executive_classic/executive_modern/technical_detailed/technical_compact). " +
+      "Always call this instead of guessing at option values or tool parameters — the answer here is sourced live from the same registries the /docs page renders, so it never goes stale.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Module doc ID, e.g. 'platform:launchpad-workflow-rules'. If unsure of the exact id, omit this to get the full catalog with every doc's id and name." },
+      },
+      required: [],
+    },
+  },
+  {
     name: "get_launchpad_pending_approvals",
     description:
       "Check whether a unit really has an undecided approval request waiting on a human right now. " +
