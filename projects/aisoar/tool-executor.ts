@@ -724,6 +724,14 @@ export async function executeWriteTool(
   input: Record<string, unknown>,
   ctx: ToolExecutionContext
 ): Promise<any> {
+  // Second enforcement layer for the COPILOT_WRITE_TOOLS_ENABLED switch (see
+  // tools.ts) — belt-and-suspenders so a stale pending action, a cached tool
+  // list, or a future regression can't slip a write through even if it was
+  // never offered to the LLM in the first place.
+  if (!COPILOT_WRITE_TOOLS_ENABLED) {
+    return { error: true, message: "Copilot write actions are currently disabled." };
+  }
+
   const base = ctx.config.aisoarApiUrl;
   const cookies = ctx.userToken;
 
@@ -966,11 +974,19 @@ export async function executeWriteTool(
     // (not the plain apiCallJson used elsewhere) so a real backend failure
     // surfaces a message instead of collapsing to a bare null, matching why
     // diagnose_launchpad_unit moved off apiCallJson for the same reason.
+    //
+    // advisoryOnly: true is load-bearing, not decoration — this tool is
+    // documented as never creating or running anything, but shares this same
+    // route with propose_workflow_rule, which DOES persist onto the live
+    // workflow. Without this flag, a manual-guide chat turn on an
+    // already-accepted workflow silently overwrites its live plan and resets
+    // acceptedAt/acceptedBy to null (confirmed incident: CSPM 7's accepted
+    // plan was wiped this way after a multi-turn manual-guide conversation).
     case "propose_workflow_rule_manual_guide": {
       const { workflowId, ...rest } = input;
       const { data, status, message } = await apiCallJsonChecked(
         `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/propose`,
-        { method: "POST", body: JSON.stringify(rest) },
+        { method: "POST", body: JSON.stringify({ ...rest, advisoryOnly: true }) },
         cookies
       );
       if (data === null) {

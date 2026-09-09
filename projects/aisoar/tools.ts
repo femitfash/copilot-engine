@@ -1268,3 +1268,16 @@ export const WRITE_TOOLS: Tool[] = [
 
 export const WRITE_TOOL_NAMES = new Set(WRITE_TOOLS.map((t) => t.name));
 export const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS];
+
+// Global safety switch, off by default: a "read-only, advisory" tool
+// (propose_workflow_rule_manual_guide) turned out to share a destructive
+// endpoint with a real mutating one and silently overwrote a live, accepted
+// LaunchPad Workflow Rule. Until every WRITE tool's blast radius has been
+// re-audited, Copilot exposes READ tools only. Set
+// COPILOT_WRITE_TOOLS_ENABLED=true to restore write access — combine with
+// tool-executor.ts's own guard on executeWriteTool, which enforces this
+// server-side even if a stale tool list or pending action slips through.
+export const COPILOT_WRITE_TOOLS_ENABLED = process.env.COPILOT_WRITE_TOOLS_ENABLED === "true";
+
+export const EXPOSED_TOOLS = COPILOT_WRITE_TOOLS_ENABLED ? ALL_TOOLS : READ_TOOLS;
+export const EXPOSED_WRITE_TOOL_NAMES = COPILOT_WRITE_TOOLS_ENABLED ? WRITE_TOOL_NAMES : new Set<string>();
