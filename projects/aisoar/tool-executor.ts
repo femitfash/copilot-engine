@@ -376,6 +376,11 @@ export async function executeReadTool(
       return apiCall(`${base}/api/launchpad/workflow-search?q=${q}&mode=discover`, { method: "GET" }, cookies);
     }
 
+    case "get_launchpad_workflow_readiness": {
+      const workflowId = input.workflowId as string;
+      return apiCall(`${base}/api/launchpad/workflows/${workflowId}`, { method: "GET" }, cookies);
+    }
+
     case "get_remote_workflow_memory": {
       const ref = encodeURIComponent(String(input.ref ?? ""));
       const key = encodeURIComponent(String(input.key ?? ""));
@@ -1081,6 +1086,15 @@ export async function executeWriteTool(
       return apiCall(
         `${base}/api/launchpad/projects/${projectId}`,
         { method: "PATCH", body: JSON.stringify({ visibility }) },
+        cookies
+      );
+    }
+
+    case "set_agent_data_classification": {
+      const { agentId, dataClassification } = input;
+      return apiCall(
+        `${base}/api/ai-agents/${agentId}`,
+        { method: "PATCH", body: JSON.stringify({ dataClassification }) },
         cookies
       );
     }

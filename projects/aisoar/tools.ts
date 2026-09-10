@@ -325,6 +325,19 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "get_launchpad_workflow_readiness",
+    description:
+      "Get a LaunchPad workflow's last-computed deployment readiness gate result: per-agent passed/failed status, score, grade, lifecycle bucket, the full reasons[] list, and each agent's own dataClassification value. " +
+      "Use this BEFORE proposing any fix to a blocked agent, to see the real reason(s) rather than guessing. Two things to know when reading the result: (1) a 'not authorized for <tier> data' reason means the agent's OWN dataClassification field (public/internal/confidential/restricted) is below what this workflow's scan.dataClassification requires — this is a completely different field from the agent's securityClearance (shown on its Agent Hub Overview tab, a RESTRICTED/CONFIDENTIAL/SECRET/TOP_SECRET/TOP_SECRET_SCI scale used nowhere in LaunchPad); fixing this means calling set_agent_data_classification, never anything about securityClearance. (2) Do not describe a 'KSA/scenario review' as a live blocker even if the user mentions it — that is not an enforced gate, only certification score/bucket, blocking tickets, and dataClassification actually block deployment.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+      },
+      required: ["workflowId"],
+    },
+  },
+  {
     name: "get_workflow_rule_run_status",
     description:
       "Get the live status of a Workflow Rule run for a LaunchPad project: per-unit task status, readiness, and pending approvals. " +
@@ -1152,6 +1165,21 @@ export const WRITE_TOOLS: Tool[] = [
         visibility: { type: "string", enum: ["public", "private"], description: "New visibility" },
       },
       required: ["projectId", "visibility"],
+    },
+  },
+  {
+    name: "set_agent_data_classification",
+    description:
+      "Change an AI agent's dataClassification — the field LaunchPad's deployment readiness gate actually checks (levels: public < internal < confidential < restricted; new agents default to internal). " +
+      "This is a DIFFERENT field from securityClearance (shown on the agent's Agent Hub Overview tab, a RESTRICTED/CONFIDENTIAL/SECRET/TOP_SECRET/TOP_SECRET_SCI scale) — securityClearance is irrelevant to LaunchPad and changing it will NOT clear a 'not authorized for <tier> data' block. " +
+      "Use get_launchpad_workflow_readiness first to confirm dataClassification (not securityClearance, not certification score) is actually the reason an agent is blocked. Always confirm the agent and target level with the user before calling this, since it changes what data the agent is authorized to process everywhere, not just in one workflow.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        agentId: { type: "string", description: "AI agent ID (ai_agents.id)" },
+        dataClassification: { type: "string", enum: ["public", "internal", "confidential", "restricted"], description: "New data classification level" },
+      },
+      required: ["agentId", "dataClassification"],
     },
   },
   {
