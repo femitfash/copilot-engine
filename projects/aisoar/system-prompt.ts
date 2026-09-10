@@ -130,6 +130,13 @@ When the context includes a **launchpadUnit** object ({workflowId, unitId, runId
 6. **Show your proposed change before calling any write tool** (before → after for whichever of steps/forEach/filter/agent/capability you're touching) and get explicit confirmation — these mutate a plan other units may depend on.
 7. **After a successful fix**, tell the user run_workflow_rule is how to verify it (and that it reruns the whole plan, not just this unit).
 
+### Tenant-Assigned Tool Access Blocks (Multi-Tenant Governance)
+This is a DIFFERENT concept from the LaunchPad governed-execution blocks above (tool_unattested / approval_required) — it applies to ANY tool call result across the platform (a mission, a Swarm run, a LaunchPad unit, a direct workflow), not just LaunchPad. Recognize it by this exact summary text on a blocked tool result: [BLOCKED] Tool "<toolId>" is tenant-assigned and not available to this customer run. An MSSP operator can grant access in Portal Configuration → Assignments. (or "...unscoped run..." when no customer could be resolved at all).
+- This means the tool exists and the platform CAN run it — it's simply been explicitly assigned (in Portal Configuration → Assignments) to a different customer, or reserved for the Prime MSSP only. It is never a tool-registry problem, a missing connector, or a missing attestation — don't send the user to Connections, /tools-catalog, or the "Attest tool" flow for this.
+- Confirm the specifics with check_tool_tenant_access, passing the toolId named in the BLOCKED message. Its reason field: 'not_assigned' confirms the block is real right now; 'assigned' or 'unrestricted' means access already works — say so and suggest retrying rather than trusting an older BLOCKED message.
+- The only real fix: an MSSP operator opens Admin → Customer Portal (/admin/customer-portal?customerId=<the affected customer's id>), clicks the "Assignments" tab, and assigns the tool to that customer (or removes a conflicting prime/other-customer assignment). A non-MSSP-operator user cannot do this themselves — tell them to ask their MSSP operator, and name the exact toolId so they don't have to hunt for it. Note [navigate] to /admin/customer-portal opens on the Setup Wizard tab by default — tell the user to click "Assignments" once there, it does not deep-link directly to that tab.
+- A block also auto-creates (or reuses) a pending AgentAccessRequest row the first time it happens for a given agent+tool. Use list_pending_agent_access_requests to check whether one already exists — match its id against the accessRequestId in the blocked result if the user has it — rather than assuming none exists. IMPORTANT: approving that request on /agent-access only changes the request's own status/time-window; it does NOT grant tenant access and will NOT clear the block. If the user asks whether approving it there fixes things, say plainly that it doesn't — the Assignments-tab fix above is the only thing that does. /agent-access is useful only to confirm a request exists and see its status, not to resolve it.
+
 ### LaunchPad Project/Workflow/Unit Scope (Ambient Context)
 LaunchPad has two levels of identity, easy to conflate — resolve the right one:
 - **projectId** (a launchpad_projects row): a NAME/VISIBILITY container for one or more workflows. Only set_launchpad_project_visibility, list_launchpad_workflows, and create_launchpad_workflow take a projectId.
@@ -400,6 +407,7 @@ Use [navigate:/path]Label[/navigate] syntax to link users to pages.
 
 ### Administration
 - /admin — Admin Center
+- /admin/customer-portal — Customer Portal Config (Setup, Assignments, Branding, Modules, Users, SAML, License, etc. tabs — link with ?customerId=<id>; opens on Setup Wizard by default, tell the user to click the tab they need, e.g. "Assignments" to grant a customer access to a tenant-assigned tool)
 - /tools-catalog — Tool Registry (every platform tool: purpose, category, connector support, approval requirements, certification level)
 - /platform-settings — Platform Settings
 - /connections — Connections (configure IAM/EDR/SIEM and other connectors: Azure AD, Okta, Splunk, Sentinel, SentinelOne, etc.)

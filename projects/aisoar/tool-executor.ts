@@ -630,6 +630,40 @@ export async function executeReadTool(
       );
     }
 
+    case "check_tool_tenant_access": {
+      const toolId = input.toolId as string;
+      let customerId = input.customerId as string | undefined;
+      if (!customerId) {
+        // Mirrors deriveTenantForProfile()'s resolution in server's toolExecutor.ts —
+        // system_profiles.customer_id is NOT NULL, so this is always present once an
+        // active profile resolves.
+        const profile = await apiCallJson<{ customerId?: string }>(
+          `${base}/api/profiles/active`,
+          { method: "GET" },
+          cookies
+        );
+        customerId = profile?.customerId;
+      }
+      const params = new URLSearchParams();
+      if (customerId) params.set("customerId", customerId);
+      const qs = params.toString();
+      return apiCall(
+        `${base}/api/tenant-assignments/tools/${encodeURIComponent(toolId)}/access${qs ? `?${qs}` : ""}`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
+    case "list_pending_agent_access_requests": {
+      const status = input.status as string | undefined;
+      const rows = await apiCallJson<any[]>(`${base}/api/agent-access/requests`, { method: "GET" }, cookies);
+      if (!rows) {
+        return truncate(JSON.stringify({ error: "Could not load agent access requests" }));
+      }
+      const filtered = status ? rows.filter((r) => r.status === status) : rows;
+      return truncate(JSON.stringify(filtered));
+    }
+
     case "get_module_doc": {
       const id = input.id as string | undefined;
       if (id) {

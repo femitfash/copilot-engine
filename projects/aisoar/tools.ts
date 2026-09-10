@@ -571,6 +571,34 @@ export const READ_TOOLS: Tool[] = [
       required: ["query"],
     },
   },
+  {
+    name: "check_tool_tenant_access",
+    description:
+      "Check whether a specific tool is tenant-assigned and whether a customer is authorized to use it — the tool that explains a '[BLOCKED] Tool \"<toolId>\" is tenant-assigned...' result from any mission, workflow, or LaunchPad unit run. " +
+      "reason 'unrestricted' means the tool has no assignment rows and works for everyone; 'assigned' means this customer is specifically authorized; 'not_assigned' confirms the block — the tool is reserved for a different customer or only the Prime MSSP. " +
+      "Omit customerId to check the caller's own active profile's customer; only pass it explicitly when checking on behalf of a different customer (e.g. an MSSP operator troubleshooting a specific tenant).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        toolId: { type: "string", description: "Tool ID exactly as named in the [BLOCKED] message, e.g. 'cspm.posture.scan'" },
+        customerId: { type: "string", description: "Customer ID to check access for (omit to use the caller's own active profile's customer)" },
+      },
+      required: ["toolId"],
+    },
+  },
+  {
+    name: "list_pending_agent_access_requests",
+    description:
+      "List AgentAccessRequest rows for the caller's active profile, including the ones auto-created when a tenant-assigned tool block occurs (resourceType 'tool', resourcePath 'tool/<toolId>') — use this to tell the user whether a request already exists for a block they're asking about (matching accessRequestId from the blocked result, if they have it) instead of assuming none exists. " +
+      "IMPORTANT: approving a tool-assignment request here only changes the request's own status/time-window — it does NOT grant tenant access. The only real fix for a tenant-assigned block is check_tool_tenant_access's remediation path (an MSSP operator assigning the tool to the customer in Portal Configuration → Assignments). Say this plainly if the user asks whether approving the request here will fix the block.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        status: { type: "string", description: "Filter to one status, e.g. 'pending' (omit to list all)" },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ─── WRITE Tools (queued for user approval) ─────────────────────────────────
