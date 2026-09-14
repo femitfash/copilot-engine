@@ -460,6 +460,7 @@ export async function executeReadTool(
       const workflowId = input.workflowId as string;
       const unitId = input.unitId as string;
       let runId = input.runId as string | undefined;
+      let noRunsNote: string | undefined;
 
       if (!runId) {
         const runsResult = await apiCallJsonChecked<{ runs?: Array<{ runId: string }> }>(
@@ -472,33 +473,42 @@ export async function executeReadTool(
         }
         runId = runsResult.data?.runs?.[0]?.runId;
         if (!runId) {
-          return truncate(JSON.stringify({ error: true, message: "This project has no Workflow Rule runs yet." }));
+          // No run to diagnose, but the unit's authored plan (steps, bindResultTo aliases,
+          // toolIds) lives in the project config independent of any run — fetch and return
+          // that instead of giving up, so "where does step X's value come from" is answerable
+          // before the workflow has ever executed.
+          noRunsNote = "This project has no Workflow Rule runs yet — showing this unit's authored plan only; no run status/result/approval data is available.";
         }
       }
 
       // Force-generate the cached plain-language explanation (zeroItemsExplanation) before
       // reading state, so it's present on the first ask rather than requiring the user to
       // click "Explain in plain language" themselves first. Best-effort: state is still read
-      // and returned even if this fails or the gateway declines.
-      await apiCallJson(
-        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId)}/explain`,
-        { method: "POST", body: JSON.stringify({ runId }) },
-        cookies
-      );
+      // and returned even if this fails or the gateway declines. Only meaningful once a run
+      // exists.
+      if (runId) {
+        await apiCallJson(
+          `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId)}/explain`,
+          { method: "POST", body: JSON.stringify({ runId }) },
+          cookies
+        );
+      }
 
       const [stateResult, projectResult] = await Promise.all([
-        apiCallJsonChecked<{ units?: any[] }>(
-          `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/state?runId=${encodeURIComponent(runId)}`,
-          { method: "GET" },
-          cookies
-        ),
+        runId
+          ? apiCallJsonChecked<{ units?: any[] }>(
+              `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/state?runId=${encodeURIComponent(runId)}`,
+              { method: "GET" },
+              cookies
+            )
+          : Promise.resolve({ data: null, status: null, message: null } as { data: { units?: any[] } | null; status: number | null; message: string | null }),
         apiCallJsonChecked<{ config?: { workflowRule?: { plan?: { units?: any[] } } } }>(
           `${base}/api/launchpad/workflows/${workflowId}`,
           { method: "GET" },
           cookies
         ),
       ]);
-      if (stateResult.message) {
+      if (runId && stateResult.message) {
         return truncate(JSON.stringify({ error: true, message: `Could not load run state for run ${runId} (backend error): ${stateResult.message}` }));
       }
       const state = stateResult.data;
@@ -509,6 +519,35 @@ export async function executeReadTool(
       const planLookupWarning = projectResult.message
         ? `Note: could not load this workflow's plan/config, so step/agent details below may be incomplete: ${projectResult.message}`
         : undefined;
+
+      const planUnit = project?.config?.workflowRule?.plan?.units?.find((u: any) => u.unitId === unitId);
+
+      if (!runId) {
+        if (!planUnit) {
+          return truncate(
+            JSON.stringify({
+              error: true,
+              message: `Unit ${unitId} was not found in this workflow's authored plan.`,
+              ...(planLookupWarning ? { planLookupWarning } : {}),
+            })
+          );
+        }
+        return truncate(
+          JSON.stringify({
+            note: noRunsNote,
+            ...(planLookupWarning ? { planLookupWarning } : {}),
+            plan: {
+              steps: planUnit.steps,
+              forEach: planUnit.forEach,
+              filter: planUnit.filter,
+              matchedAgentId: planUnit.matchedAgentId,
+              candidateAgentIds: planUnit.candidateAgentIds,
+              unsatisfiedCapabilities: planUnit.unsatisfiedCapabilities,
+              dependsOn: planUnit.dependsOn,
+            },
+          })
+        );
+      }
 
       const runtimeUnit = state?.units?.find((u) => u.unitId === unitId);
       if (!runtimeUnit) {
@@ -544,7 +583,6 @@ export async function executeReadTool(
           })
         );
       }
-      const planUnit = project?.config?.workflowRule?.plan?.units?.find((u: any) => u.unitId === unitId);
 
       return truncate(
         JSON.stringify({
