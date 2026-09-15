@@ -1108,10 +1108,11 @@ export const WRITE_TOOLS: Tool[] = [
   {
     name: "patch_launchpad_unit_plan",
     description:
-      "Edit a unit's authored composition: its steps, forEach source, or filter conditions. This is the actual repair tool for the mismatches diagnose_launchpad_unit surfaces (a wrong toolId, a stale forEach.source pointing at a field the upstream unit no longer produces, a filter condition naming a field/casing the tool's real output doesn't use). " +
-      "`steps` is REQUIRED on every call, even when only forEach or filter is changing — pass back diagnose_launchpad_unit's plan.steps unchanged in that case, since the underlying route always replaces the full steps array. Include expectedStepIds (diagnose_launchpad_unit's plan.steps stepIds, in order) so a concurrent edit by someone else is rejected instead of silently overwritten. " +
+      "Edit a unit's authored composition: its steps, forEach source, filter conditions, or dependsOn. This is the actual repair tool for the mismatches diagnose_launchpad_unit surfaces (a wrong toolId, a stale forEach.source pointing at a field the upstream unit no longer produces, a filter condition naming a field/casing the tool's real output doesn't use), and for the whole-plan structural errors reported in context.launchpadPlanValidation (a dependsOn entry naming a unitId that doesn't exist, or a forEach.source whose upstream unit isn't listed in dependsOn). " +
+      "`steps` is REQUIRED on every call, even when only forEach/filter/dependsOn is changing — pass back diagnose_launchpad_unit's plan.steps unchanged in that case, since the underlying route always replaces the full steps array. Include expectedStepIds (diagnose_launchpad_unit's plan.steps stepIds, in order) so a concurrent edit by someone else is rejected instead of silently overwritten. " +
       "Never guess a new toolId or field name — check it first with get_tool_registry_info or against a value actually seen in get_launchpad_unit_run_history's result.deliverable, so this doesn't just trade one wrong guess for another. " +
-      "Always show the user exactly what will change (before → after, for whichever of steps/forEach/filter you're touching) and get explicit confirmation before calling this — it mutates a plan other units may depend on.",
+      "Never guess a dependsOn/forEach.source fix either — resolve the real unitId from diagnose_launchpad_unit's (or context.launchpadScope's) unit list, never from the malformed reference text itself. " +
+      "Always show the user exactly what will change (before → after, for whichever of steps/forEach/filter/dependsOn you're touching) and get explicit confirmation before calling this — it mutates a plan other units may depend on.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -1159,6 +1160,11 @@ export const WRITE_TOOLS: Tool[] = [
               },
             },
           },
+        },
+        dependsOn: {
+          type: "array",
+          items: { type: "string" },
+          description: "New full list of unitIds this unit depends on (max 10). Every entry must be a real unitId in the same plan, and if the unit has a forEach, its forEach.source's upstream unitId must be included here. Omit if dependsOn isn't changing.",
         },
         expectedStepIds: {
           type: "array",
