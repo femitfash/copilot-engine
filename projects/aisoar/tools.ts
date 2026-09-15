@@ -281,6 +281,9 @@ export const READ_TOOLS: Tool[] = [
         executorType: { type: "string", description: "Filter by the scan engine that produced the finding (e.g., 'sast', 'dast', 'cspm')" },
         since: { type: "string", description: "Only findings on/after this date, ISO format (e.g. '2026-07-01')" },
         until: { type: "string", description: "Only findings on/before this date, ISO format (e.g. '2026-07-31')" },
+        category: { type: "string", description: "Filter by finding category (e.g., 'Injection', 'Access Control') — exact match, free text" },
+        cveId: { type: "string", description: "Filter by a specific CVE identifier (e.g., 'CVE-2024-1234')" },
+        sourceToolId: { type: "string", description: "Filter by the specific tool that produced the finding (e.g., 'semgrep', 'trivy')" },
         limit: { type: "number", description: "Max records to return (default 100, capped at 500)" },
       },
       required: [],
@@ -289,12 +292,49 @@ export const READ_TOOLS: Tool[] = [
   {
     name: "list_launchpad_projects",
     description:
-      "List LaunchPad projects with their id, name, department, status, lifecycleStage, and build stage. " +
-      "Use this to resolve a projectId when the user refers to a project by name/department and context.launchpadScope is not present (they're not currently viewing that project's LaunchPad page) — never ask the user to look up and paste a raw project ID themselves.",
+      "List LaunchPad PROJECTS — the parent grouping/naming/visibility container for one or more workflows (a launchpad_projects row, not an individual ai_workflows row). Each result has id, name, slug, visibility ('public': referenceable by any profile under this customer, or 'private': only its owning profile), and workflowCount. Customer-wide: includes the caller's own profile's projects (any visibility) plus public projects from sibling profiles under the same customer. " +
+      "Use this to resolve a projectId when the user refers to a project by name and context.launchpadScope is not present, or before calling list_launchpad_workflows/create_launchpad_workflow — never ask the user to look up and paste a raw project ID themselves.",
     input_schema: {
       type: "object" as const,
       properties: {},
       required: [],
+    },
+  },
+  {
+    name: "list_launchpad_workflows",
+    description:
+      "List the workflows inside one LaunchPad project (id, name, department, status, lifecycleStage, build stage). Use this after list_launchpad_projects has resolved which project the user means, to then resolve a specific workflowId for the other launchpad tools below.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID (from list_launchpad_projects)" },
+      },
+      required: ["projectId"],
+    },
+  },
+  {
+    name: "search_launchpad_workflows",
+    description:
+      "Substring search across every workflow this customer can see (own profile's, any visibility, plus public workflows from sibling profiles) by name/description. Use this when a user describes wanting something that might already exist ('is there already a workflow that checks X') before proposing to create a new one, or to help them find a workflowId/projectId when they only remember a rough name.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        q: { type: "string", description: "Search text" },
+      },
+      required: ["q"],
+    },
+  },
+  {
+    name: "get_launchpad_workflow_readiness",
+    description:
+      "Get a LaunchPad workflow's last-computed deployment readiness gate result: per-agent passed/failed status, score, grade, lifecycle bucket, the full reasons[] list, and each agent's own dataClassification value. " +
+      "Use this BEFORE proposing any fix to a blocked agent, to see the real reason(s) rather than guessing. Two things to know when reading the result: (1) a 'not authorized for <tier> data' reason means the agent's OWN dataClassification field (public/internal/confidential/restricted) is below what this workflow's scan.dataClassification requires — this is a completely different field from the agent's securityClearance (shown on its Agent Hub Overview tab, a RESTRICTED/CONFIDENTIAL/SECRET/TOP_SECRET/TOP_SECRET_SCI scale used nowhere in LaunchPad); fixing this means calling set_agent_data_classification, never anything about securityClearance. (2) Do not describe a 'KSA/scenario review' as a live blocker even if the user mentions it — that is not an enforced gate, only certification score/bucket, blocking tickets, and dataClassification actually block deployment.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+      },
+      required: ["workflowId"],
     },
   },
   {
@@ -309,10 +349,10 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         runId: { type: "string", description: "Specific run ID to check (omit for the most recent run)" },
       },
-      required: ["projectId"],
+      required: ["workflowId"],
     },
   },
   {
@@ -323,9 +363,9 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
       },
-      required: ["projectId"],
+      required: ["workflowId"],
     },
   },
   {
@@ -338,9 +378,23 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
       },
-      required: ["projectId"],
+      required: ["workflowId"],
+    },
+  },
+  {
+    name: "list_active_dynamic_tools",
+    description:
+      "List every dynamic capability currently active (or pending credentials) for this tenant across ALL LaunchPad workflows — not scoped to one workflow like get_launchpad_dynamic_tools. " +
+      "Each entry reports kind (recipe/connector/function), status, healthStatus, and — when present — sourceTemplateId (this one was materialized from a pre-built, pre-vetted pattern instead of freshly LLM-authored) or a connectorId starting with 'custom_' (this one was auto-created from a saved Connections-page custom API endpoint). " +
+      "Use this for 'what dynamic tools/automations do I have', 'what can I automate with my configured connectors', or to check whether a saved custom API endpoint became a usable tool.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        kind: { type: "string", enum: ["recipe", "connector", "function"], description: "Optional filter by tool kind" },
+      },
+      required: [],
     },
   },
   {
@@ -348,16 +402,17 @@ export const READ_TOOLS: Tool[] = [
     description:
       "Diagnose ONE Workflow Rule unit in depth — the first tool to call when a user opens a specific blocked/failed/skipped unit and asks 'why' or 'fix this'. " +
       "Combines the unit's live run outcome with its current authored composition in one call: status, error, pendingApprovalCount, result (zeroItemsReason/zeroItemsExplanation/filterNote/healAttempts — the automated self-heal engine's own reasoning about why it could or couldn't fix this unit), and plan (its current steps, forEach, filter, matchedAgentId, unsatisfiedCapabilities) so you have everything needed to both explain the failure and, if you propose a fix, call patch_launchpad_unit_plan without a second round-trip to read the current steps first. " +
+      "Also works before the project has ANY Workflow Rule runs — in that case it returns the unit's authored plan only (steps, bindResultTo aliases, toolIds) with no run status/result/approval data, rather than an error; this is the right (and only) way to answer static questions like 'where does step X's value come from' or 'what tool does step Y call' on a plan that has never executed. " +
       "Omit runId to use the project's most recent run. " +
       "A healAttempts entry with verdict 'unresolvable' means the automated healer already tried and explains exactly what a human fix would require — read its reasoning before proposing your own patch, and don't re-propose something it already ruled out as outside the allowed patch scope (forEach/filter/step params/returns) — that needs a different unit's steps changed instead, or a human decision.",
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         runId: { type: "string", description: "Specific run ID (omit for the most recent run)" },
       },
-      required: ["projectId", "unitId"],
+      required: ["workflowId", "unitId"],
     },
   },
   {
@@ -368,11 +423,11 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         limit: { type: "number", description: "Max past runs to return (default 5, capped at 20)" },
       },
-      required: ["projectId", "unitId"],
+      required: ["workflowId", "unitId"],
     },
   },
   {
@@ -389,6 +444,35 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "search_tool_registry",
+    description:
+      "Discover tool(s) in the platform's tool registry (400+ entries) when you don't already know the exact toolId — by keyword against id/name/description, or by category. " +
+      "Use this BEFORE get_tool_registry_info whenever a user references a tool loosely (a workflow step's label like 'create-ticket', a vague description like 'the Jira ticket tool', or 'what tools exist for X') — guessing at a toolId (e.g. 'create.ticket' instead of the real 'ticket.create') returns a 404 from get_tool_registry_info with no hint at the correct id, so search first, then look up the exact match for full detail. " +
+      "Omit both search and category to get the list of categories with counts instead of individual tools, as a starting point for browsing.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        search: { type: "string", description: "Keyword to match against tool id, name, or description, e.g. 'ticket', 'jira', 'sast'" },
+        category: { type: "string", description: "Tool category to filter by (or browse), e.g. 'Incident Response'. Get valid values by calling with no arguments first." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_module_doc",
+    description:
+      "Fetch the platform's own in-product documentation for one module — its overview, step-by-step how-to-use, real tool/connector lists, and any referenceTables spelling out fixed option vocabularies (e.g. filter operators, report themes, work-unit kinds). " +
+      "Use id 'platform:launchpad-workflow-rules' for anything about LaunchPad Workflow Rules — filter condition operators, work unit kinds, step onError policy, forEach loop mode, deliverable kinds, ticket routing, connector binding, approval requirements, or report themes (executive_classic/executive_modern/technical_detailed/technical_compact). " +
+      "Always call this instead of guessing at option values or tool parameters — the answer here is sourced live from the same registries the /docs page renders, so it never goes stale.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        id: { type: "string", description: "Module doc ID, e.g. 'platform:launchpad-workflow-rules'. If unsure of the exact id, omit this to get the full catalog with every doc's id and name." },
+      },
+      required: [],
+    },
+  },
+  {
     name: "get_launchpad_pending_approvals",
     description:
       "Check whether a unit really has an undecided approval request waiting on a human right now. " +
@@ -397,12 +481,123 @@ export const READ_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         runId: { type: "string", description: "The run ID the unit's task belongs to" },
         agentId: { type: "string", description: "The unit's assigned agent ID, if known (from diagnose_launchpad_unit's plan.matchedAgentId) — enables the fallback check" },
       },
-      required: ["projectId", "unitId", "runId"],
+      required: ["workflowId", "unitId", "runId"],
+    },
+  },
+  {
+    name: "get_remote_workflow_memory",
+    description:
+      "Read a named value from ANOTHER LaunchPad workflow's long-term memory, by its \"project.workflow\" friendly reference (e.g. \"EDR_on_crowdstrike.check_for_endpoints\" — spaces in the project/workflow name become underscores). Authorization is re-checked live: resolves only within the caller's own customer, and only into a private project if it's owned by the caller's own profile. By convention, a workflow that publishes a completion \"report\" for downstream use does so under memory key \"report\" — read it here with key=\"report\".",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        ref: { type: "string", description: "Dotted \"project.workflow\" reference, e.g. 'EDR_on_crowdstrike.check_for_endpoints'" },
+        key: { type: "string", description: "Memory key to read" },
+      },
+      required: ["ref", "key"],
+    },
+  },
+  {
+    name: "get_launchpad_workflow_memory",
+    description:
+      "Read this workflow's OWN long-term memory — a flat key/value store that survives across runs, written by memory.get/memory.set workflow-rule steps and hand-editable in the Project Memory panel. Omit key to list every entry.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        key: { type: "string", description: "Specific memory key to read (omit to list all entries)" },
+      },
+      required: ["workflowId"],
+    },
+  },
+  {
+    name: "get_launchpad_run_variable",
+    description:
+      "Read a run-scoped variable (set via a run.setVariable step) from one specific Workflow Rule run. Resolve runId first via get_workflow_rule_run_status or get_workflow_rule_runs.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        runId: { type: "string", description: "The run ID (from get_workflow_rule_run_status/get_workflow_rule_runs)" },
+        name: { type: "string", description: "Variable name" },
+      },
+      required: ["workflowId", "runId", "name"],
+    },
+  },
+  {
+    name: "get_iam_role_export",
+    description:
+      "Export IAM role definitions with user/permission counts. Unions AISOAR's own DB-backed RBAC roles with a connector-sourced layer (Azure AD/Entra ID directory roles, or Okta admin role assignees) when one of those is configured on Connections — the DB stays the source of truth.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_iam_mfa_audit",
+    description:
+      "Audit MFA enrollment across user accounts — real DB-backed enrollment counts (TOTP/WebAuthn/recovery codes), plus a Microsoft Graph credentialUserRegistrationDetails comparison when Azure AD is configured on Connections.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_iam_privilege_audit",
+    description:
+      "Audit privileged accounts (admin/superadmin/root roles) for excessive-permission risk, based on real user/role assignments.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "query_siem",
+    description:
+      "Run a read-only search query against the configured SIEM connector — Splunk (SPL), Microsoft Sentinel (KQL over Log Analytics), or Elastic (query string), whichever is configured on Connections, in that priority order.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string", description: "Search query in the configured provider's language (Splunk SPL, Sentinel KQL, or an Elastic query string)" },
+        limit: { type: "number", description: "Max records to return (default 100)" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "check_tool_tenant_access",
+    description:
+      "Check whether a specific tool is tenant-assigned and whether a customer is authorized to use it — the tool that explains a '[BLOCKED] Tool \"<toolId>\" is tenant-assigned...' result from any mission, workflow, or LaunchPad unit run. " +
+      "reason 'unrestricted' means the tool has no assignment rows and works for everyone; 'assigned' means this customer is specifically authorized; 'not_assigned' confirms the block — the tool is reserved for a different customer or only the Prime MSSP. " +
+      "Omit customerId to check the caller's own active profile's customer; only pass it explicitly when checking on behalf of a different customer (e.g. an MSSP operator troubleshooting a specific tenant).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        toolId: { type: "string", description: "Tool ID exactly as named in the [BLOCKED] message, e.g. 'cspm.posture.scan'" },
+        customerId: { type: "string", description: "Customer ID to check access for (omit to use the caller's own active profile's customer)" },
+      },
+      required: ["toolId"],
+    },
+  },
+  {
+    name: "list_pending_agent_access_requests",
+    description:
+      "List AgentAccessRequest rows for the caller's active profile, including the ones auto-created when a tenant-assigned tool block occurs (resourceType 'tool', resourcePath 'tool/<toolId>') — use this to tell the user whether a request already exists for a block they're asking about (matching accessRequestId from the blocked result, if they have it) instead of assuming none exists. " +
+      "IMPORTANT: approving a tool-assignment request here only changes the request's own status/time-window — it does NOT grant tenant access. The only real fix for a tenant-assigned block is check_tool_tenant_access's remediation path (an MSSP operator assigning the tool to the customer in Portal Configuration → Assignments). Say this plainly if the user asks whether approving the request here will fix the block.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        status: { type: "string", description: "Filter to one status, e.g. 'pending' (omit to list all)" },
+      },
+      required: [],
     },
   },
 ];
@@ -562,6 +757,31 @@ export const WRITE_TOOLS: Tool[] = [
         query: { type: "string", description: "Freeform focus for the report content, e.g. 'all unified findings for July' or 'focus on critical risks'" },
       },
       required: [],
+    },
+  },
+  {
+    name: "render_report",
+    description:
+      "Render already-drafted narrative text into a professionally branded, letterhead-styled PDF + HTML security " +
+      "report (using the tenant's company profile logo/address). Choose from 4 built-in themes: `executive_classic` " +
+      "and `executive_modern` (polished, leadership-facing) or `technical_detailed` and `technical_compact` (denser, " +
+      "analyst-facing). This does not draft content itself — pass narrative text you already have (e.g. the output of " +
+      "generate_report, or text the user supplied) as `bodyMarkdown`.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        title: { type: "string", description: "Report title" },
+        bodyMarkdown: {
+          type: "string",
+          description: "The narrative content to render, as Markdown (## headings, **bold**, - bullets, plain paragraphs).",
+        },
+        theme: {
+          type: "string",
+          enum: ["executive_classic", "executive_modern", "technical_detailed", "technical_compact"],
+          description: "Visual theme. Defaults to executive_classic if omitted.",
+        },
+      },
+      required: ["title", "bodyMarkdown"],
     },
   },
   {
@@ -744,11 +964,12 @@ export const WRITE_TOOLS: Tool[] = [
       "Propose a LaunchPad Workflow Rule for a project by describing the desired detect/remediate/verify/escalate flow in plain language. " +
       "The AI decomposes it into a candidate plan of work units (e.g. detect a condition, attempt remediation, verify it worked, escalate to a ticket or notify a human on failure). " +
       "This only proposes a candidate plan for the user to review — it does not create or run anything. Use accept_workflow_rule once the user approves the plan, then run_workflow_rule to execute it. " +
-      "Example: 'find hosts missing a Vuln Mgmt agent, try to reinitialize it, escalate to a ticket if that fails, notify a human'.",
+      "Example: 'find hosts missing a Vuln Mgmt agent, try to reinitialize it, escalate to a ticket if that fails, notify a human'. " +
+      "On the FIRST call for a rule (not a clarifying-question reply), the result may include similarWorkflows — one or more existing workflow rules elsewhere in the tenant whose description is identical or close to this one. When similarWorkflows contains an entry with matchedVia \"exact\", decomposition was skipped entirely (candidatePlan is null) — tell the user plainly that an identical rule already exists (name it and its project) and ask whether to reuse it, clone it (apply_similar_workflow_rule), or proceed with a fresh plan anyway (call propose_workflow_rule again with forceDecompose: true). A \"keyword\" or \"embedding\" match means decomposition proceeded normally but a related rule exists — mention it as an FYI, it does not block anything.",
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID this workflow rule belongs to" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID this workflow rule belongs to" },
         ruleText: { type: "string", description: "Plain-language description of the desired workflow rule" },
         transcript: {
           type: "array",
@@ -761,8 +982,64 @@ export const WRITE_TOOLS: Tool[] = [
           },
           description: "Prior clarifying-question exchange for this rule, if refining an earlier proposal",
         },
+        forceDecompose: {
+          type: "boolean",
+          description: "Set true to bypass an exact-duplicate match from a prior call and decompose a fresh plan anyway — only after the user has explicitly said to proceed despite the identical existing rule.",
+        },
       },
-      required: ["projectId", "ruleText"],
+      required: ["workflowId", "ruleText"],
+    },
+  },
+  {
+    name: "propose_workflow_rule_manual_guide",
+    description:
+      "Decompose a described LaunchPad Workflow Rule use case exactly like propose_workflow_rule (same decomposition engine, same clarifying-question/similarWorkflows behavior) — but for a user who wants to build the rule THEMSELVES in the Workflow Rule editor, not have the AI build and run it. " +
+      "Use this instead of propose_workflow_rule when the user asks for manual/DIY steps, e.g. 'give me the steps to build this myself', 'how do I set this up in the editor', 'walk me through creating this rule by hand'. " +
+      "Present any clarifyingQuestions to the user exactly as with propose_workflow_rule. Once a candidatePlan is returned with no more clarifying questions, the client renders a step-by-step manual guide directly from the plan — do not narrate the plan yourself and do not call accept_workflow_rule or run_workflow_rule for this thread; this tool never creates or runs anything, only drafts an advisory plan to derive instructions from. " +
+      "If the user changes their mind and asks the AI to build it instead, switch to accept_workflow_rule against the same workflowId (the draft plan this call produced is reusable).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID this workflow rule belongs to" },
+        ruleText: { type: "string", description: "Plain-language description of the desired workflow rule (or, on a reply turn, the answer to the last clarifying question)" },
+        transcript: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              role: { type: "string", enum: ["user", "assistant"] },
+              content: { type: "string" },
+            },
+          },
+          description: "Prior clarifying-question exchange for this rule, if refining an earlier proposal",
+        },
+        isReply: {
+          type: "boolean",
+          description: "Set true when ruleText is an answer to a prior clarifying question rather than the opening use-case description — preserves the original ruleText instead of overwriting it.",
+        },
+        forceDecompose: {
+          type: "boolean",
+          description: "Set true to bypass an exact-duplicate match from a prior call and decompose a fresh plan anyway — only after the user has explicitly said to proceed despite the identical existing rule.",
+        },
+      },
+      required: ["workflowId", "ruleText"],
+    },
+  },
+  {
+    name: "apply_similar_workflow_rule",
+    description:
+      "Apply an existing workflow rule found by propose_workflow_rule's similarWorkflows to THIS project's workflow, instead of authoring a new plan from scratch. " +
+      "mode \"reuse\": no changes are made here — just tells the user the other workflow's id/name so they can go work with it directly (use this when the user wants to use the OTHER workflow, not this one). " +
+      "mode \"clone\": copies the other workflow rule's plan into THIS workflow (replacing any existing draft plan here) so the user can review and adjust it, then accept_workflow_rule as normal — this workflow's own rule description (ruleText) is left untouched, only the plan changes. " +
+      "Always confirm which existing workflow the user means (by name) before calling this, especially if similarWorkflows had more than one match.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID to apply the clone into (mode \"clone\"), or the workflow the user is currently working in (mode \"reuse\")" },
+        sourceWorkflowId: { type: "string", description: "The existing workflow ID to reuse/clone from — from propose_workflow_rule's similarWorkflows" },
+        mode: { type: "string", enum: ["reuse", "clone"], description: "\"reuse\" just surfaces the other workflow for navigation; \"clone\" copies its plan into workflowId" },
+      },
+      required: ["workflowId", "sourceWorkflowId", "mode"],
     },
   },
   {
@@ -774,12 +1051,12 @@ export const WRITE_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID whose proposed plan should be accepted" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID whose proposed plan should be accepted" },
         isTemplate: { type: "boolean", description: "Save this as a reusable template (default false)" },
         templateName: { type: "string", description: "Template name, if isTemplate is true" },
         templateDescription: { type: "string", description: "Template description, if isTemplate is true" },
       },
-      required: ["projectId"],
+      required: ["workflowId"],
     },
   },
   {
@@ -791,10 +1068,10 @@ export const WRITE_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID whose accepted plan should be run" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID whose accepted plan should be run" },
         runId: { type: "string", description: "Optional run ID to reuse (omit to mint a new run)" },
       },
-      required: ["projectId"],
+      required: ["workflowId"],
     },
   },
   {
@@ -806,11 +1083,11 @@ export const WRITE_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         capability: { type: "string", description: "The exact unsatisfiedCapabilities string to dismiss, from diagnose_launchpad_unit's plan.unsatisfiedCapabilities" },
       },
-      required: ["projectId", "unitId", "capability"],
+      required: ["workflowId", "unitId", "capability"],
     },
   },
   {
@@ -821,24 +1098,25 @@ export const WRITE_TOOLS: Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         agentId: { type: "string", description: "New agent ID to assign, or omit/null to clear the assignment" },
       },
-      required: ["projectId", "unitId"],
+      required: ["workflowId", "unitId"],
     },
   },
   {
     name: "patch_launchpad_unit_plan",
     description:
-      "Edit a unit's authored composition: its steps, forEach source, or filter conditions. This is the actual repair tool for the mismatches diagnose_launchpad_unit surfaces (a wrong toolId, a stale forEach.source pointing at a field the upstream unit no longer produces, a filter condition naming a field/casing the tool's real output doesn't use). " +
-      "`steps` is REQUIRED on every call, even when only forEach or filter is changing — pass back diagnose_launchpad_unit's plan.steps unchanged in that case, since the underlying route always replaces the full steps array. Include expectedStepIds (diagnose_launchpad_unit's plan.steps stepIds, in order) so a concurrent edit by someone else is rejected instead of silently overwritten. " +
+      "Edit a unit's authored composition: its steps, forEach source, filter conditions, or dependsOn. This is the actual repair tool for the mismatches diagnose_launchpad_unit surfaces (a wrong toolId, a stale forEach.source pointing at a field the upstream unit no longer produces, a filter condition naming a field/casing the tool's real output doesn't use), and for the whole-plan structural errors reported in context.launchpadPlanValidation (a dependsOn entry naming a unitId that doesn't exist, or a forEach.source whose upstream unit isn't listed in dependsOn). " +
+      "`steps` is REQUIRED on every call, even when only forEach/filter/dependsOn is changing — pass back diagnose_launchpad_unit's plan.steps unchanged in that case, since the underlying route always replaces the full steps array. Include expectedStepIds (diagnose_launchpad_unit's plan.steps stepIds, in order) so a concurrent edit by someone else is rejected instead of silently overwritten. " +
       "Never guess a new toolId or field name — check it first with get_tool_registry_info or against a value actually seen in get_launchpad_unit_run_history's result.deliverable, so this doesn't just trade one wrong guess for another. " +
-      "Always show the user exactly what will change (before → after, for whichever of steps/forEach/filter you're touching) and get explicit confirmation before calling this — it mutates a plan other units may depend on.",
+      "Never guess a dependsOn/forEach.source fix either — resolve the real unitId from diagnose_launchpad_unit's (or context.launchpadScope's) unit list, never from the malformed reference text itself. " +
+      "Always show the user exactly what will change (before → after, for whichever of steps/forEach/filter/dependsOn you're touching) and get explicit confirmation before calling this — it mutates a plan other units may depend on.",
     input_schema: {
       type: "object" as const,
       properties: {
-        projectId: { type: "string", description: "LaunchPad project ID" },
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         steps: {
           type: "array",
@@ -883,13 +1161,89 @@ export const WRITE_TOOLS: Tool[] = [
             },
           },
         },
+        dependsOn: {
+          type: "array",
+          items: { type: "string" },
+          description: "New full list of unitIds this unit depends on (max 10). Every entry must be a real unitId in the same plan, and if the unit has a forEach, its forEach.source's upstream unitId must be included here. Omit if dependsOn isn't changing.",
+        },
         expectedStepIds: {
           type: "array",
           items: { type: "string" },
           description: "Current stepIds in order, for optimistic-concurrency checking (recommended)",
         },
       },
-      required: ["projectId", "unitId", "steps"],
+      required: ["workflowId", "unitId", "steps"],
+    },
+  },
+  {
+    name: "create_launchpad_workflow",
+    description:
+      "Add a new workflow to an existing LaunchPad project (resolve projectId first via list_launchpad_projects or search_launchpad_workflows). The workflow name must be unique within that project and cannot contain a \".\" (reserved for the project.workflow reference syntax). Always confirm the project and name with the user before calling this.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID to add this workflow to" },
+        name: { type: "string", description: "Workflow name — unique within the project, no \".\"" },
+        description: { type: "string", description: "Optional description" },
+      },
+      required: ["projectId", "name"],
+    },
+  },
+  {
+    name: "set_launchpad_project_visibility",
+    description:
+      "Change a LaunchPad project's visibility. 'public' (the default) means any profile under this customer can discover and reference this project's workflows via memory.getRemote. 'private' restricts that to the project's own owning profile — existing external references stop resolving immediately once flipped private. Always confirm which setting the user wants and why before calling this, since flipping to private can break another workflow's cross-workflow memory read.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        projectId: { type: "string", description: "LaunchPad project ID" },
+        visibility: { type: "string", enum: ["public", "private"], description: "New visibility" },
+      },
+      required: ["projectId", "visibility"],
+    },
+  },
+  {
+    name: "set_agent_data_classification",
+    description:
+      "Change an AI agent's dataClassification — the field LaunchPad's deployment readiness gate actually checks (levels: public < internal < confidential < restricted; new agents default to internal). " +
+      "This is a DIFFERENT field from securityClearance (shown on the agent's Agent Hub Overview tab, a RESTRICTED/CONFIDENTIAL/SECRET/TOP_SECRET/TOP_SECRET_SCI scale) — securityClearance is irrelevant to LaunchPad and changing it will NOT clear a 'not authorized for <tier> data' block. " +
+      "Use get_launchpad_workflow_readiness first to confirm dataClassification (not securityClearance, not certification score) is actually the reason an agent is blocked. Always confirm the agent and target level with the user before calling this, since it changes what data the agent is authorized to process everywhere, not just in one workflow.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        agentId: { type: "string", description: "AI agent ID (ai_agents.id)" },
+        dataClassification: { type: "string", enum: ["public", "internal", "confidential", "restricted"], description: "New data classification level" },
+      },
+      required: ["agentId", "dataClassification"],
+    },
+  },
+  {
+    name: "set_launchpad_workflow_memory",
+    description:
+      "Set a named value in this workflow's OWN long-term memory (overwrites any existing value for the same key). Key must match ^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$ (max 120 chars) — dot-separated segments are allowed for namespacing, e.g. jira.critical_findings.issue_ids. Confirm the key and value with the user before calling this if it looks like it could overwrite something another workflow depends on reading via memory.getRemote.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        key: { type: "string", description: "Memory key" },
+        value: { description: "Value to store (any JSON-serializable value)" },
+      },
+      required: ["workflowId", "key", "value"],
+    },
+  },
+  {
+    name: "set_launchpad_run_variable",
+    description:
+      "Set a run-scoped variable, visible to every unit/step in that one run for its remainder. Resolve runId first via get_workflow_rule_run_status/get_workflow_rule_runs. Rarely something a user asks for directly — usually only relevant while debugging a specific run's data flow.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        runId: { type: "string", description: "The run ID" },
+        name: { type: "string", description: "Variable name" },
+        value: { description: "Value to store (any JSON-serializable value)" },
+      },
+      required: ["workflowId", "runId", "name", "value"],
     },
   },
   {
@@ -914,9 +1268,79 @@ export const WRITE_TOOLS: Tool[] = [
       required: ["name", "testType", "frequency"],
     },
   },
+  {
+    name: "isolate_edr_host",
+    description:
+      "Isolate (or release) an endpoint via the configured EDR connector (CrowdStrike Falcon, SentinelOne, Microsoft Defender for Endpoint, or Carbon Black). Requires human approval before it executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        host: { type: "string", description: "Hostname or IP of the endpoint (use this or deviceId)" },
+        deviceId: { type: "string", description: "Vendor-specific device/agent/machine ID (use this or host)" },
+        action: { type: "string", enum: ["isolate", "unisolate"], description: "isolate to contain the host, unisolate to release it (default isolate)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "revoke_iam_sessions",
+    description:
+      "Revoke a user's active sessions — AISOAR's own session store, plus the configured IAM connector (Azure AD/Entra ID via Graph revokeSignInSessions, or Okta via DELETE /sessions) when the user's email/UPN is supplied. Requires human approval before it executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        user_id: { type: "string", description: "Internal AISOAR user ID" },
+        email: { type: "string", description: "User's email/UPN — required to also revoke sessions on a configured Azure AD/Okta connector" },
+        session_id: { type: "string", description: "Specific session ID to revoke (omit to revoke all of this user's sessions)" },
+        reason: { type: "string", description: "Reason for revocation, e.g. 'compromised_credentials'" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "send_email_notification",
+    description:
+      "Send an email notification or report through the tenant's configured SMTP/SendGrid relay, optionally with a CSV attachment. Requires human approval before it executes.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        to: { type: "string", description: "Recipient email address" },
+        subject: { type: "string", description: "Email subject line" },
+        body: { type: "string", description: "Plain-text email body (omit for an empty-body notification)" },
+        csvContent: { type: "string", description: "Optional CSV report content to attach" },
+        csvFilename: { type: "string", description: "Filename for the CSV attachment (default 'report.csv')" },
+      },
+      required: ["to", "subject"],
+    },
+  },
+  {
+    name: "test_dynamic_tool",
+    description:
+      "Re-run the on-demand dry-run test for one connector-kind dynamic tool (including a custom-API-derived one) against its own saved fixture, to confirm it still works. Requires human approval before it executes because it issues a real HTTP call to the underlying vendor/custom endpoint.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        dynamicToolId: { type: "string", description: "The dynamic tool's row id, from list_active_dynamic_tools or get_launchpad_dynamic_tools" },
+      },
+      required: ["dynamicToolId"],
+    },
+  },
 ];
 
 // ─── Exports ────────────────────────────────────────────────────────────────
 
 export const WRITE_TOOL_NAMES = new Set(WRITE_TOOLS.map((t) => t.name));
 export const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS];
+
+// Global safety switch, off by default: a "read-only, advisory" tool
+// (propose_workflow_rule_manual_guide) turned out to share a destructive
+// endpoint with a real mutating one and silently overwrote a live, accepted
+// LaunchPad Workflow Rule. Until every WRITE tool's blast radius has been
+// re-audited, Copilot exposes READ tools only. Set
+// COPILOT_WRITE_TOOLS_ENABLED=true to restore write access — combine with
+// tool-executor.ts's own guard on executeWriteTool, which enforces this
+// server-side even if a stale tool list or pending action slips through.
+export const COPILOT_WRITE_TOOLS_ENABLED = process.env.COPILOT_WRITE_TOOLS_ENABLED === "true";
+
+export const EXPOSED_TOOLS = COPILOT_WRITE_TOOLS_ENABLED ? ALL_TOOLS : READ_TOOLS;
+export const EXPOSED_WRITE_TOOL_NAMES = COPILOT_WRITE_TOOLS_ENABLED ? WRITE_TOOL_NAMES : new Set<string>();

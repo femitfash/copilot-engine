@@ -29,8 +29,8 @@ import {
   getResponseModeInstruction as aisoarResponseModeInstruction,
 } from "../projects/aisoar/system-prompt";
 import {
-  ALL_TOOLS as AISOAR_ALL_TOOLS,
-  WRITE_TOOL_NAMES as AISOAR_WRITE_TOOL_NAMES,
+  EXPOSED_TOOLS as AISOAR_ALL_TOOLS,
+  EXPOSED_WRITE_TOOL_NAMES as AISOAR_WRITE_TOOL_NAMES,
 } from "../projects/aisoar/tools";
 import {
   executeReadTool as aisoarExecuteReadTool,
