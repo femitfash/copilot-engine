@@ -369,6 +369,21 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "get_workflow_rule_test_runs",
+    description:
+      "List past TEST runs of a Workflow Rule for a LaunchPad project — distinct from get_workflow_rule_runs, which only lists production runs. " +
+      "Each entry includes when it ran, who/what triggered it, final status, unit counts (completed/failed/blocked/skipped), a score (overall/categoryScores/errorCount/warningCount), and draftApplied (whether that test run's staged plan changes were ever applied to production). " +
+      "Use this to answer 'how did my last test run go', 'show me the test run history', or to find the runId of a failed test run before diagnosing it. " +
+      "Once you have a runId from here, get_workflow_rule_run_status and diagnose_launchpad_unit both accept it directly — they work for test runs the same as production runs — to get per-unit status and failure reasons (e.g. an llm.reason provider_error) without the user needing to supply the run ID themselves.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+      },
+      required: ["workflowId"],
+    },
+  },
+  {
     name: "get_launchpad_dynamic_tools",
     description:
       "List the dynamic capabilities authored for a LaunchPad project — capabilities the platform did not have, generated at workflow-rule authoring time to close a gap. " +
@@ -1086,6 +1101,7 @@ export const WRITE_TOOLS: Tool[] = [
         workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         capability: { type: "string", description: "The exact unsatisfiedCapabilities string to dismiss, from diagnose_launchpad_unit's plan.unsatisfiedCapabilities" },
+        testRunId: { type: "string", description: "If fixing a unit during a LaunchPad test run (context.launchpadTestRun), pass its runId here — this then only edits that run's staged draft plan, never the real one, until apply_test_run_patches_to_production runs" },
       },
       required: ["workflowId", "unitId", "capability"],
     },
@@ -1094,13 +1110,15 @@ export const WRITE_TOOLS: Tool[] = [
     name: "reassign_launchpad_unit_agent",
     description:
       "Change (or clear, with agentId null) which agent is assigned to execute a unit. " +
-      "Use when diagnosis shows the wrong agent was matched, or a unit has no agent and capability authoring needs one attributed. Always confirm the new agent with the user first — this changes who a run's tool calls are attributed to.",
+      "Use when diagnosis shows the wrong agent was matched, or a unit has no agent and capability authoring needs one attributed. Always confirm the new agent with the user first — this changes who a run's tool calls are attributed to. " +
+      "With testRunId set (during a LaunchPad test run), this only swaps the draft plan's assignment and skips the live route's capability-gap auto-provisioning — a reassignment that needs a brand-new tool authored still requires calling this without testRunId, against the real plan.",
     input_schema: {
       type: "object" as const,
       properties: {
         workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
         agentId: { type: "string", description: "New agent ID to assign, or omit/null to clear the assignment" },
+        testRunId: { type: "string", description: "If reassigning during a LaunchPad test run (context.launchpadTestRun), pass its runId here to edit only that run's staged draft plan" },
       },
       required: ["workflowId", "unitId"],
     },
@@ -1112,12 +1130,15 @@ export const WRITE_TOOLS: Tool[] = [
       "`steps` is REQUIRED on every call, even when only forEach/filter/dependsOn is changing — pass back diagnose_launchpad_unit's plan.steps unchanged in that case, since the underlying route always replaces the full steps array. Include expectedStepIds (diagnose_launchpad_unit's plan.steps stepIds, in order) so a concurrent edit by someone else is rejected instead of silently overwritten. " +
       "Never guess a new toolId or field name — check it first with get_tool_registry_info or against a value actually seen in get_launchpad_unit_run_history's result.deliverable, so this doesn't just trade one wrong guess for another. " +
       "Never guess a dependsOn/forEach.source fix either — resolve the real unitId from diagnose_launchpad_unit's (or context.launchpadScope's) unit list, never from the malformed reference text itself. " +
-      "Always show the user exactly what will change (before → after, for whichever of steps/forEach/filter/dependsOn you're touching) and get explicit confirmation before calling this — it mutates a plan other units may depend on.",
+      "Always show the user exactly what will change (before → after, for whichever of steps/forEach/filter/dependsOn you're touching) and get explicit confirmation before calling this — it mutates a plan other units may depend on. " +
+      "During a LaunchPad test run (context.launchpadTestRun present), pass testRunId so this only edits that run's staged draft plan — the user reviews it via get_workflow_rule_run_status/a rerun, then explicitly applies it with apply_test_run_patches_to_production; without testRunId this edits the real, live plan immediately. " +
+      "IMPORTANT: unless full write access is enabled, omitting testRunId is rejected outright — you can only patch a test run's draft plan, never the live plan directly. Always pass testRunId when fixing a unit found via a test run (including one found through get_workflow_rule_test_runs).",
     input_schema: {
       type: "object" as const,
       properties: {
         workflowId: { type: "string", description: "LaunchPad workflow ID" },
         unitId: { type: "string", description: "The work unit's ID" },
+        testRunId: { type: "string", description: "If fixing a unit during a LaunchPad test run, pass its runId here instead of editing the real plan" },
         steps: {
           type: "array",
           description: "The unit's full desired step list (required — pass back the current steps unchanged if only forEach/filter is changing)",
@@ -1173,6 +1194,50 @@ export const WRITE_TOOLS: Tool[] = [
         },
       },
       required: ["workflowId", "unitId", "steps"],
+    },
+  },
+  {
+    name: "run_workflow_rule_test",
+    description:
+      "Start a safe, non-destructive TEST run of an accepted Workflow Rule (\"LaunchPad Test\" — like a Playwright/vitest dry-run for this workflow). Every ordinary approval gate is auto-approved for this one run; a destructive/high-risk step (e.g. isolating a host, disabling an account, killing a session) instead blocks and asks the user via resolve_test_run_destructive_step whether to really execute it or simulate a result. Outbound email/ticket subjects are automatically prefixed so nothing reads as a real alert. " +
+      "Only call this after the user has confirmed they want to run a test (the client shows a confirm dialog before opening this chat) — do not start a test run unprompted. " +
+      "After starting, poll get_workflow_rule_run_status with the returned runId to see progress; when a unit is blocked with testModeDecisionRequired, present the execute/simulate choice; when a unit fails, diagnose it with diagnose_launchpad_unit and propose a fix via patch_launchpad_unit_plan/dismiss_launchpad_capability_gap/reassign_launchpad_unit_agent with testRunId set (these only touch this test run's DRAFT plan, never the real one). On completion report the 0-100 score and ask whether to apply_test_run_patches_to_production.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID whose accepted plan should be test-run" },
+        subjectPrefix: { type: "string", description: "Override the default \"ZeroTrusted.ai's LaunchPad Workflow Test — \" subject/title prefix for this run's emails/tickets" },
+      },
+      required: ["workflowId"],
+    },
+  },
+  {
+    name: "resolve_test_run_destructive_step",
+    description:
+      "Record the user's choice for ONE destructive/high-risk step a test run is blocked on, then resume the run. Always ask the user explicitly — \"execute for real\" or \"simulate\" — before calling this; never guess. Use the unitId/stepId from the blocked unit's result (get_workflow_rule_run_status / testModeDecisionRequired).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        runId: { type: "string", description: "The test run's ID" },
+        unitId: { type: "string", description: "The blocked unit's ID" },
+        stepId: { type: "string", description: "The blocked step's ID" },
+        decision: { type: "string", enum: ["execute", "simulate"], description: "\"execute\" really dispatches the tool; \"simulate\" fabricates a plausible result without ever calling the real connector" },
+      },
+      required: ["workflowId", "runId", "unitId", "stepId", "decision"],
+    },
+  },
+  {
+    name: "apply_test_run_patches_to_production",
+    description:
+      "Copy a test run's staged plan fixes (made via patch_launchpad_unit_plan/dismiss_launchpad_capability_gap/reassign_launchpad_unit_agent with testRunId set) into the REAL, live Workflow Rule plan. This is the only action that changes the production plan from a test session — everything else during a test run only ever touches that run's draft. Always summarize what changed and get explicit confirmation from the user before calling this.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        runId: { type: "string", description: "The test run whose staged draft plan should be applied to production" },
+      },
+      required: ["workflowId", "runId"],
     },
   },
   {
@@ -1342,5 +1407,25 @@ export const ALL_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS];
 // server-side even if a stale tool list or pending action slips through.
 export const COPILOT_WRITE_TOOLS_ENABLED = process.env.COPILOT_WRITE_TOOLS_ENABLED === "true";
 
-export const EXPOSED_TOOLS = COPILOT_WRITE_TOOLS_ENABLED ? ALL_TOOLS : READ_TOOLS;
-export const EXPOSED_WRITE_TOOL_NAMES = COPILOT_WRITE_TOOLS_ENABLED ? WRITE_TOOL_NAMES : new Set<string>();
+// Carve-out from the switch above: these three are always exposed, even with
+// COPILOT_WRITE_TOOLS_ENABLED off, because none of them can reach the failure
+// mode that caused the lockdown (a write silently landing on a live, accepted
+// plan). All three are test-run/draft scoped — patch_launchpad_unit_plan only
+// when called with a testRunId (tool-executor.ts enforces this in addition to
+// the tool description), run_workflow_rule_test only ever starts a sandboxed
+// test run, and resolve_test_run_destructive_step only records a decision on
+// a step within one. apply_test_run_patches_to_production is deliberately
+// excluded — it's the one tool that copies a draft plan into production, and
+// stays behind the full switch like every other WRITE tool.
+export const SAFE_WRITE_TOOL_NAMES = new Set([
+  "run_workflow_rule_test",
+  "patch_launchpad_unit_plan",
+  "resolve_test_run_destructive_step",
+]);
+
+export const EXPOSED_TOOLS = COPILOT_WRITE_TOOLS_ENABLED
+  ? ALL_TOOLS
+  : [...READ_TOOLS, ...WRITE_TOOLS.filter((t) => SAFE_WRITE_TOOL_NAMES.has(t.name))];
+export const EXPOSED_WRITE_TOOL_NAMES = COPILOT_WRITE_TOOLS_ENABLED
+  ? WRITE_TOOL_NAMES
+  : SAFE_WRITE_TOOL_NAMES;

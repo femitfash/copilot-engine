@@ -1,7 +1,7 @@
 import express, { Express, RequestHandler } from "express";
 import cors from "cors";
 import { validateToken } from "./auth/validate-token";
-import { createCopilotRoute, createExecuteRoute } from "./engine/route-factories";
+import { createCopilotRoute, createExecuteRoute, createStatusRoute } from "./engine/route-factories";
 import type { ProjectConfig } from "./engine/project-config";
 
 export interface MountOptions {
@@ -12,6 +12,7 @@ export interface MountOptions {
    * Routes created:
    *   POST {basePath}          — SSE chat
    *   POST {basePath}/execute  — action execution
+   *   GET  {basePath}/status   — poll current in-flight tool-call progress
    *   GET  {basePath}/health   — health check
    */
   basePath?: string;
@@ -79,6 +80,7 @@ export function mountCopilot(
   // Mount route factories
   app.use(basePath, createCopilotRoute(project));
   app.use(basePath, createExecuteRoute(project));
+  app.use(basePath, createStatusRoute());
 
   // Health check (no auth)
   app.get(`${basePath}/health`, (_req, res) => {

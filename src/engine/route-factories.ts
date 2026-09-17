@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { runAgenticLoop } from "./agentic-loop";
 import { streamWords, sendDone, sendError } from "./sse-stream";
 import { classifyProviderError, friendlyMessageFor } from "./error-classifier";
+import { setProgress, getProgress, clearProgress } from "./progress-store";
 import type { ProjectConfig } from "./project-config";
 import type { LLMConfig } from "./llm-types";
 
@@ -72,7 +73,9 @@ export function createCopilotRoute(project: ProjectConfig): Router {
       // Let client know we're processing
       res.write(`data: ${JSON.stringify({ type: "text", text: "" })}\n\n`);
 
-      // Run agentic loop
+      // Run agentic loop — onProgress lets the client poll GET {basePath}/status
+      // for what's happening right now (see progress-store.ts), since nothing
+      // else is written to this response until the whole loop finishes.
       const result = await runAgenticLoop(
         fullPrompt,
         message,
@@ -81,7 +84,8 @@ export function createCopilotRoute(project: ProjectConfig): Router {
         project.writeToolNames,
         project.executeReadTool,
         ctx,
-        llmConfig
+        llmConfig,
+        (progress) => setProgress(conversationId, progress)
       );
 
       // Stream text word-by-word
@@ -98,7 +102,25 @@ export function createCopilotRoute(project: ProjectConfig): Router {
       sendError(res, userMessage, actionable ? `llm_${classified.code}` : undefined);
     } finally {
       clearTimeout(timeout);
+      clearProgress(req.body?.conversationId);
     }
+  });
+
+  return router;
+}
+
+/**
+ * Create the progress-poll route.
+ * GET {basePath}/status?conversationId=... — the latest tool-call status for
+ * an in-flight request from createCopilotRoute, or null once it's done/if
+ * nothing has run yet. Best-effort only — see progress-store.ts.
+ */
+export function createStatusRoute(): Router {
+  const router = Router();
+
+  router.get("/status", (req: Request, res: Response) => {
+    const conversationId = req.query.conversationId as string | undefined;
+    res.json({ progress: getProgress(conversationId) });
   });
 
   return router;

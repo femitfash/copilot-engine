@@ -6,6 +6,31 @@ const MAX_ITERATIONS = 6;
 const MAX_TOOL_RESULT_CHARS = 8000;
 const MAX_HISTORY_MESSAGES = 20;
 
+// Best-effort, cheap extraction of a human-readable progress line from a
+// tool's raw JSON result — only worth it for the handful of tools whose
+// result shape commonly answers "how far along is this." Anything else
+// (including a parse failure) just falls back to no summary; the caller
+// still has the tool name.
+function summarizeToolResult(result: string): string | undefined {
+  try {
+    const parsed = JSON.parse(result);
+    if (parsed && typeof parsed === "object") {
+      const status = typeof parsed.status === "string" ? parsed.status : undefined;
+      const completed = typeof parsed.completedCount === "number" ? parsed.completedCount : undefined;
+      const total = typeof parsed.unitCount === "number" ? parsed.unitCount : undefined;
+      const score = parsed.score && typeof parsed.score.overall === "number" ? parsed.score.overall : undefined;
+      const parts: string[] = [];
+      if (status) parts.push(status);
+      if (completed !== undefined && total !== undefined) parts.push(`${completed}/${total} units done`);
+      if (score !== undefined) parts.push(`score ${score}`);
+      if (parts.length > 0) return parts.join(" — ");
+    }
+  } catch {
+    // not JSON, or not the shape we know how to summarize — fine
+  }
+  return undefined;
+}
+
 function truncateResult(result: string): string {
   if (result.length <= MAX_TOOL_RESULT_CHARS) return result;
   return result.substring(0, MAX_TOOL_RESULT_CHARS) + "\n\n[... truncated — result too large. Show the user a summary of what you received.]";
@@ -23,6 +48,12 @@ export interface AgenticResult {
   pendingActions: PendingAction[];
 }
 
+export interface ToolProgress {
+  toolName: string;
+  isWrite: boolean;
+  summary?: string;
+}
+
 export async function runAgenticLoop(
   systemPrompt: string,
   userMessage: string,
@@ -35,7 +66,8 @@ export async function runAgenticLoop(
     ctx: any
   ) => Promise<string>,
   ctx: any,
-  llmConfig?: LLMConfig
+  llmConfig?: LLMConfig,
+  onProgress?: (progress: ToolProgress) => void
 ): Promise<AgenticResult> {
   const config = llmConfig ?? getLLMConfig();
   const provider: LLMProvider = createProvider(config);
@@ -99,6 +131,7 @@ export async function runAgenticLoop(
     for (const toolCall of toolUseBlocks) {
       if (writeToolNames.has(toolCall.name)) {
         // WRITE tool: queue for approval, do NOT execute
+        onProgress?.({ toolName: toolCall.name, isWrite: true });
         pendingActions.push({
           id: toolCall.id,
           name: toolCall.name,
@@ -121,6 +154,11 @@ export async function runAgenticLoop(
             toolCall.input,
             ctx
           );
+          onProgress?.({
+            toolName: toolCall.name,
+            isWrite: false,
+            summary: summarizeToolResult(result),
+          });
           toolResults.push({
             tool_use_id: toolCall.id,
             content: truncateResult(result),

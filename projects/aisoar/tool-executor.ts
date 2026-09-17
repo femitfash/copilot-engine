@@ -1,4 +1,4 @@
-import { COPILOT_WRITE_TOOLS_ENABLED } from "./tools";
+import { COPILOT_WRITE_TOOLS_ENABLED, SAFE_WRITE_TOOL_NAMES } from "./tools";
 
 export interface ToolExecutionContext {
   /** Raw `Cookie` header, forwarded for READ-tool HTTP calls only. */
@@ -437,6 +437,15 @@ export async function executeReadTool(
       );
     }
 
+    case "get_workflow_rule_test_runs": {
+      const workflowId = input.workflowId as string;
+      return apiCall(
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/test-runs`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
     case "get_launchpad_dynamic_tools": {
       const workflowId = input.workflowId as string;
       return apiCall(
@@ -806,8 +815,10 @@ export async function executeWriteTool(
   // Second enforcement layer for the COPILOT_WRITE_TOOLS_ENABLED switch (see
   // tools.ts) — belt-and-suspenders so a stale pending action, a cached tool
   // list, or a future regression can't slip a write through even if it was
-  // never offered to the LLM in the first place.
-  if (!COPILOT_WRITE_TOOLS_ENABLED) {
+  // never offered to the LLM in the first place. SAFE_WRITE_TOOL_NAMES is the
+  // always-on carve-out (see tools.ts) — everything else still needs the
+  // global switch.
+  if (!COPILOT_WRITE_TOOLS_ENABLED && !SAFE_WRITE_TOOL_NAMES.has(toolName)) {
     return { error: true, message: "Copilot write actions are currently disabled." };
   }
 
@@ -1119,28 +1130,72 @@ export async function executeWriteTool(
     }
 
     case "dismiss_launchpad_capability_gap": {
-      const { workflowId, unitId, ...rest } = input;
+      const { workflowId, unitId, testRunId, ...rest } = input;
+      // testRunId set: edits ONLY that test run's staged draft plan (never the real one) — see
+      // launchpadWorkflowRuleRunner.ts's TestModeRunState / the /test-runs/:runId/... routes.
+      const runScoped = testRunId ? `/test-runs/${encodeURIComponent(testRunId as string)}` : "";
       return apiCall(
-        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/dismiss-capability`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule${runScoped}/units/${encodeURIComponent(unitId as string)}/dismiss-capability`,
         { method: "PATCH", body: JSON.stringify(rest) },
         cookies
       );
     }
 
     case "reassign_launchpad_unit_agent": {
-      const { workflowId, unitId, agentId } = input;
+      const { workflowId, unitId, agentId, testRunId } = input;
+      const runScoped = testRunId ? `/test-runs/${encodeURIComponent(testRunId as string)}` : "";
       return apiCall(
-        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/agent`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule${runScoped}/units/${encodeURIComponent(unitId as string)}/agent`,
         { method: "PATCH", body: JSON.stringify({ agentId: agentId ?? null }) },
         cookies
       );
     }
 
     case "patch_launchpad_unit_plan": {
-      const { workflowId, unitId, ...rest } = input;
+      const { workflowId, unitId, testRunId, ...rest } = input;
+      // When only the SAFE_WRITE_TOOL_NAMES carve-out applies (full write mode
+      // off), this tool may only ever touch a test run's draft plan — never
+      // the live accepted plan. Without this, an LLM omitting testRunId would
+      // silently patch production, exactly the failure mode that caused the
+      // COPILOT_WRITE_TOOLS_ENABLED lockdown in the first place.
+      if (!COPILOT_WRITE_TOOLS_ENABLED && !testRunId) {
+        return {
+          error: true,
+          message:
+            "Copilot can only patch a unit's plan for a specific test run right now — pass testRunId. Patching the live production plan directly requires full write access, which is currently disabled.",
+        };
+      }
+      const runScoped = testRunId ? `/test-runs/${encodeURIComponent(testRunId as string)}` : "";
       return apiCall(
-        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/units/${encodeURIComponent(unitId as string)}/steps`,
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule${runScoped}/units/${encodeURIComponent(unitId as string)}/steps`,
         { method: "PATCH", body: JSON.stringify(rest) },
+        cookies
+      );
+    }
+
+    case "run_workflow_rule_test": {
+      const { workflowId, ...rest } = input;
+      return apiCall(
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/run-test`,
+        { method: "POST", body: JSON.stringify(rest) },
+        cookies
+      );
+    }
+
+    case "resolve_test_run_destructive_step": {
+      const { workflowId, runId, ...rest } = input;
+      return apiCall(
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/test-runs/${encodeURIComponent(runId as string)}/destructive-decision`,
+        { method: "POST", body: JSON.stringify(rest) },
+        cookies
+      );
+    }
+
+    case "apply_test_run_patches_to_production": {
+      const { workflowId, runId } = input;
+      return apiCall(
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule/test-runs/${encodeURIComponent(runId as string)}/apply-to-production`,
+        { method: "POST" },
         cookies
       );
     }
