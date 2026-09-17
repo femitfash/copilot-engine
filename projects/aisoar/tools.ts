@@ -1214,7 +1214,7 @@ export const WRITE_TOOLS: Tool[] = [
   {
     name: "resolve_test_run_destructive_step",
     description:
-      "Record the user's choice for ONE destructive/high-risk step a test run is blocked on, then resume the run. Always ask the user explicitly — \"execute for real\" or \"simulate\" — before calling this; never guess. Use the unitId/stepId from the blocked unit's result (get_workflow_rule_run_status / testModeDecisionRequired).",
+      "Record the user's choice for ONE step a test run is blocked on, then resume the run — either a destructive/high-risk step (testModeDecisionRequired.actionType names a classified action type like identity/kill/payment) or a brand-new, never-before-run capability self-heal just authored (actionType 'unvetted_capability' — novelty, not classification, is why it's blocked). Always ask the user explicitly — \"execute for real\" or \"simulate\" — before calling this; never guess. Use the unitId/stepId from the blocked unit's result (get_workflow_rule_run_status / testModeDecisionRequired).",
     input_schema: {
       type: "object" as const,
       properties: {
