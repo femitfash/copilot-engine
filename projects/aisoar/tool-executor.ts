@@ -879,9 +879,18 @@ export async function executeWriteTool(
 
     case "run_sast_scan": {
       const executeGovernedTool = requireGovernedExecutor(ctx);
+      // sast.run never reads a "target" param — it reads targetUrl for a repository/website
+      // scan or targetDir for a local path scan. Passing { target: ... } straight through (as
+      // this used to) silently falls through to sast.run's own default-to-cwd behavior, so a
+      // Copilot-requested "scan https://github.com/org/repo" scanned the platform's own source
+      // instead. scanMode is deliberately left unset here: sast.run's own isSourceRepositoryUrl
+      // check already distinguishes a real repo URL from an arbitrary website URL that belongs
+      // on the web/KAT scan path instead.
+      const target = typeof input.target === "string" ? input.target : "";
+      const isUrl = /^https?:\/\//i.test(target);
       return executeGovernedTool(
         "sast.run",
-        { target: input.target },
+        isUrl ? { targetUrl: target } : { targetDir: target },
         buildGovernedCtx(ctx, toolName)
       );
     }
