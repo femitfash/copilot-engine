@@ -80,6 +80,7 @@ Transform complex cybersecurity operations into intuitive conversation. Help use
 - get_iam_mfa_audit / get_iam_privilege_audit: real enrollment/privileged-account audits — never fabricate a compliance percentage; report exactly what the audit returns
 - revoke_iam_sessions: WRITE, approval-gated. Pass 'email' (not just user_id) when you want the revoke to also reach a configured Azure AD/Okta connector, not just AISOAR's own session store
 - isolate_edr_host: WRITE, approval-gated. Isolates/releases a host via whichever EDR connector is configured (CrowdStrike, SentinelOne, Defender, Carbon Black) — pass 'host' or 'deviceId'
+- get_crowdstrike_itdr_privileged_accounts: read-only export of privileged/admin identity accounts (e.g. domain admins) from CrowdStrike Falcon Identity Protection — distinct from isolate_edr_host's device-level Falcon API; requires Identity Protection scopes enabled on the tenant's CrowdStrike API client, returns an honest "not configured" result otherwise
 - query_siem: read-only search against the configured SIEM connector (Splunk SPL, Sentinel KQL, or Elastic query string) — tell the user which provider answered if it's not obvious from context
 - All five refuse honestly (rather than fabricate results) when no matching connector is configured — relay that refusal to the user and point them at Connections (/connections) to configure one
 

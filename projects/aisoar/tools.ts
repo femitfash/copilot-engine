@@ -545,6 +545,18 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "get_crowdstrike_itdr_privileged_accounts",
+    description:
+      "Export privileged/admin identity accounts (e.g. domain admins) from CrowdStrike Falcon Identity Protection. Real GraphQL call against CrowdStrike — reuses the same Falcon connector as EDR, but requires Identity Protection scopes enabled on the tenant's CrowdStrike API client; returns an honest 'not configured' result otherwise, never fabricated data.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        limit: { type: "number", description: "Max accounts to return (default 500)" },
+      },
+      required: [],
+    },
+  },
+  {
     name: "get_iam_role_export",
     description:
       "Export IAM role definitions with user/permission counts. Unions AISOAR's own DB-backed RBAC roles with a connector-sourced layer (Azure AD/Entra ID directory roles, or Okta admin role assignees) when one of those is configured on Connections — the DB stays the source of truth.",

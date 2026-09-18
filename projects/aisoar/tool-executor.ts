@@ -772,6 +772,16 @@ export async function executeReadTool(
     // governedToolExecutor auto-executes them — consistent with copilot-engine's
     // "READ tools execute immediately" contract despite going through the
     // governed path.
+    case "get_crowdstrike_itdr_privileged_accounts": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      const result = await executeGovernedTool(
+        "crowdstrike.itdr.privilegedAccounts.export",
+        { limit: input.limit },
+        buildGovernedCtx(ctx, toolName)
+      );
+      return truncate(JSON.stringify(result));
+    }
+
     case "get_iam_role_export": {
       const executeGovernedTool = requireGovernedExecutor(ctx);
       const result = await executeGovernedTool("iam.export.roles", {}, buildGovernedCtx(ctx, toolName));
