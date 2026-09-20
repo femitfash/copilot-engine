@@ -446,6 +446,76 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "validate_launchpad_unit_patch",
+    description:
+      "Dry-run check whether a proposed unit patch (same shape as patch_launchpad_unit_plan's steps/forEach/filter/dependsOn/connectorBinding) would pass the platform's real validator — the exact same checks patch_launchpad_unit_plan enforces (schema, output-contract, runner-invariant, connector-binding), but nothing is saved. Read-only: executes immediately, no approval needed. " +
+      "ALWAYS call this with the exact patch you're about to propose BEFORE showing it to the user or calling patch_launchpad_unit_plan — never present a fix you haven't verified this way, since a prose rule about the validator's behavior can be incomplete or stale (e.g. whether ${steps.} resolves across units, or what the real ${units.}/${vars.}/${memory.} template syntax is) in a way a live check against the real validator cannot be. " +
+      "If it returns ok:false, read 'problems' (each is a specific validator message, same wording patch_launchpad_unit_plan itself would reject with — quote it back to the user) and revise the patch, then call this again. Fix everything 'problems' reports in one revised patch rather than looping error-by-error, since the agentic loop is bounded. If you cannot find a patch that comes back ok:true within this unit's own scope, say so plainly instead of guessing or presenting an unverified fix. " +
+      "Pass testRunId when checking a fix for a unit found via a test run, so this validates against that run's staged draft plan instead of the live plan.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workflowId: { type: "string", description: "LaunchPad workflow ID" },
+        unitId: { type: "string", description: "The work unit's ID" },
+        testRunId: { type: "string", description: "If checking a fix for a unit found during a LaunchPad test run, pass its runId here to validate against that run's draft plan" },
+        steps: {
+          type: "array",
+          description: "The unit's full desired step list (required — pass back the current steps unchanged if only forEach/filter is changing)",
+          items: {
+            type: "object",
+            properties: {
+              stepId: { type: "string" },
+              toolId: { type: "string" },
+              params: { type: "object" },
+              bindResultTo: { type: "string" },
+              onError: { type: "string", enum: ["stop", "continue", "tolerate_exists"] },
+              returns: { type: "object", description: "Map of output field name to type (string/number/boolean/array/object)" },
+            },
+            required: ["stepId", "toolId"],
+          },
+        },
+        forEach: {
+          type: "object",
+          description: "New forEach config, or explicit null to remove iteration",
+          properties: {
+            source: { type: "string" },
+            as: { type: "string" },
+            maxItems: { type: "number" },
+          },
+        },
+        filter: {
+          type: "object",
+          description: "New filter config",
+          properties: {
+            logic: { type: "string", enum: ["AND", "OR"] },
+            conditions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  field: { type: "string" },
+                  operator: { type: "string" },
+                  value: {},
+                },
+              },
+            },
+          },
+        },
+        dependsOn: {
+          type: "array",
+          items: { type: "string" },
+          description: "New full list of unitIds this unit depends on (max 10). Every entry must be a real unitId in the same plan, and if the unit has a forEach or a ${units.<unitId>.<field>} reference, that upstream unitId must be included here.",
+        },
+        expectedStepIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Current stepIds in order, for optimistic-concurrency checking (recommended)",
+        },
+      },
+      required: ["workflowId", "unitId", "steps"],
+    },
+  },
+  {
     name: "get_tool_registry_info",
     description:
       "Look up a tool's declared purpose, category, safety constraints, and certification level from the platform's tool registry. " +
@@ -1139,6 +1209,7 @@ export const WRITE_TOOLS: Tool[] = [
     name: "patch_launchpad_unit_plan",
     description:
       "Edit a unit's authored composition: its steps, forEach source, filter conditions, or dependsOn. This is the actual repair tool for the mismatches diagnose_launchpad_unit surfaces (a wrong toolId, a stale forEach.source pointing at a field the upstream unit no longer produces, a filter condition naming a field/casing the tool's real output doesn't use), and for the whole-plan structural errors reported in context.launchpadPlanValidation (a dependsOn entry naming a unitId that doesn't exist, or a forEach.source whose upstream unit isn't listed in dependsOn). " +
+      "ALWAYS call validate_launchpad_unit_patch with this exact same patch first and confirm it comes back ok:true before calling this or showing the fix to the user — see that tool's own description for why. " +
       "`steps` is REQUIRED on every call, even when only forEach/filter/dependsOn is changing — pass back diagnose_launchpad_unit's plan.steps unchanged in that case, since the underlying route always replaces the full steps array. Include expectedStepIds (diagnose_launchpad_unit's plan.steps stepIds, in order) so a concurrent edit by someone else is rejected instead of silently overwritten. " +
       "Never guess a new toolId or field name — check it first with get_tool_registry_info or against a value actually seen in get_launchpad_unit_run_history's result.deliverable, so this doesn't just trade one wrong guess for another. " +
       "Never guess a dependsOn/forEach.source fix either — resolve the real unitId from diagnose_launchpad_unit's (or context.launchpadScope's) unit list, never from the malformed reference text itself. " +
