@@ -626,6 +626,19 @@ export async function executeReadTool(
       );
     }
 
+    case "validate_launchpad_unit_patch": {
+      const { workflowId, unitId, testRunId, ...rest } = input;
+      // Read-only regardless of COPILOT_WRITE_TOOLS_ENABLED — unlike patch_launchpad_unit_plan,
+      // this never persists anything, so it needs no live-vs-draft write-mode gate; it validates
+      // against whichever plan (live or the named test run's draft) the caller asks about.
+      const runScoped = testRunId ? `/test-runs/${encodeURIComponent(testRunId as string)}` : "";
+      return apiCall(
+        `${base}/api/launchpad/workflows/${workflowId}/workflow-rule${runScoped}/units/${encodeURIComponent(unitId as string)}/steps/validate`,
+        { method: "POST", body: JSON.stringify(rest) },
+        cookies
+      );
+    }
+
     case "get_tool_registry_info": {
       const toolId = input.toolId as string;
       return apiCall(
