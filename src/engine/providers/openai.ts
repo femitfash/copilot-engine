@@ -22,6 +22,15 @@ function tokenLimitParam(model: string, limit: number): Record<string, number> {
   return { max_completion_tokens: Math.max(limit, REASONING_TIER_MIN_COMPLETION_TOKENS) };
 }
 
+// Reasoning-tier models reject a non-"none" reasoning_effort combined with
+// function tools on /v1/chat/completions ("Function tools with
+// reasoning_effort are not supported ... set reasoning_effort to 'none'").
+// This engine always sends tools, so pin it to "none" for these models.
+function reasoningEffortParam(model: string, hasTools: boolean): Record<string, string> {
+  if (!REASONING_TIER_MODEL.test(model) || !hasTools) return {};
+  return { reasoning_effort: "none" };
+}
+
 /**
  * OpenAI provider — supports GPT-4.1 mini, GPT-4o, and any model
  * that supports function calling / tool use.
@@ -62,6 +71,7 @@ export class OpenAIProvider implements LLMProvider {
     const response = await this.client.chat.completions.create({
       model: params.model,
       ...tokenLimitParam(params.model, params.maxTokens),
+      ...reasoningEffortParam(params.model, tools.length > 0),
       tools,
       messages: openaiMessages,
     });
