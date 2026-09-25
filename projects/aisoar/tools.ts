@@ -105,6 +105,16 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "get_running_jobs",
+    description:
+      "Get a count and list of currently running scans, tool jobs, SWARM runs, pentests, AI-evaluation-harness runs, and agent missions under the active profile — use this to answer questions like 'what's running right now' or 'how many scans are active'. Does not stop anything; the kill switch itself is a UI-only control, not exposed as a chat action, so never claim you can stop or cancel a job on the user's behalf.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "get_threat_intel",
     description:
       "Get threat intelligence watchlist statistics and recent findings",

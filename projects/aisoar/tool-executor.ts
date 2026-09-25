@@ -267,6 +267,14 @@ export async function executeReadTool(
       );
     }
 
+    case "get_running_jobs": {
+      return apiCall(
+        `${base}/api/admin/kill-switch/running`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
     case "list_ai_agents": {
       return apiCall(`${base}/api/ai-agents`, { method: "GET" }, cookies);
     }
