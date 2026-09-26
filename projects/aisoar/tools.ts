@@ -1483,6 +1483,28 @@ export const WRITE_TOOLS: Tool[] = [
       required: ["dynamicToolId"],
     },
   },
+  {
+    name: "create_dynamic_tool",
+    description:
+      "Directly author a new LaunchPad capability (a recipe over existing tools, or a config-driven " +
+      "connector request — never generated code) for a capability the platform doesn't have yet, outside " +
+      "of accept_workflow_rule's own automatic attempt. Use this when the user asks to (re)try authoring " +
+      "a capability by itself, or wants a standalone capability without going through a full workflow-rule " +
+      "accept. Reuses an existing equivalent capability automatically instead of authoring a duplicate. " +
+      "Requires human approval. IMPORTANT: authoring here does NOT wire the new tool into a specific unit's " +
+      "plan — after success, tell the user to re-run accept_workflow_rule for that unit so the platform " +
+      "grants and wires the new capability in.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        capabilityDescription: { type: "string", description: "Plain-language description of the missing capability" },
+        unitContext: { type: "string", description: "Optional: what work unit/step needs this" },
+        sourceProjectId: { type: "string", description: "Optional: LaunchPad project ID" },
+        sourceUnitId: { type: "string", description: "Optional: the work unit ID" },
+      },
+      required: ["capabilityDescription"],
+    },
+  },
 ];
 
 // ─── Exports ────────────────────────────────────────────────────────────────
