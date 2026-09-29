@@ -353,7 +353,10 @@ export const READ_TOOLS: Tool[] = [
       "Get the live status of a Workflow Rule run for a LaunchPad project: per-unit task status, readiness, and pending approvals. " +
       "Use this to answer 'what's the status of this run' or 'is it done yet' after run_workflow_rule. Omit runId to get the most recent run. " +
       "Reading the response: a unit with status 'skipped' reached the end without processing anything and ran no tools — never report it as a success; " +
-      "result.zeroItemsReason says exactly why (upstream produced nothing, a filter excluded everything, or the upstream unit has not run yet) and should be quoted to the user. " +
+      "result.zeroItemsReason says exactly why and should be quoted to the user. Its OPENING PHRASE is meaningful: "
+      + '"Filter excluded all N item(s)" means the conditions were evaluated against real data and nothing matched, which is a normal outcome, not a fault; '
+      + '"Filter could not be evaluated" means a field the filter names was absent from EVERY item, so it could never have matched on any data — that is a real authoring defect and must not be reported as an all-clear. '
+      + "Other reasons: the upstream produced nothing, or the upstream unit has not run yet. " +
       "result.filterNote means the unit ran but the operator's filter conditions could not apply, so the rule likely needs editing. " +
       "pendingApprovalCount is the live number of undecided approval requests for that unit — it, not the plan's approvalRequired policy, is what determines whether something is actually waiting on a human right now.",
     input_schema: {
