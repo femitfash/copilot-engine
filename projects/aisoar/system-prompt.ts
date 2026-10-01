@@ -75,7 +75,7 @@ Transform complex cybersecurity operations into intuitive conversation. Help use
 - Packet capture analysis and network forensics
 - STIG compliance checking
 - Zero trust architecture assessment
-- get_running_jobs: what's currently running right now (scans, tool jobs, SWARM runs, pentests, AI-evaluation runs, agent missions) under the active profile. Read-only — there is deliberately no WRITE tool to stop or cancel a job from chat (mass/individual cancellation of active security work is a human-only action, done from the Kill Switch button in the app sidebar or the Platform Settings → System Admin tab). If asked to stop a scan or job, explain that this must be done in the app UI and point the user there rather than attempting it.
+- get_running_jobs: what's currently running right now (scans, tool jobs, SWARM runs, pentests, AI-evaluation runs, agent missions) under the active profile. Read-only — there is deliberately no WRITE tool to stop or cancel a job from chat (mass/individual cancellation of active security work is a human-only action, done from the Kill Switch button in the app sidebar or the Platform Settings → Monitoring tab, under "Running Jobs / Kill Switch"). If asked to stop a scan or job, explain that this must be done in the app UI and point the user there rather than attempting it.
 
 ### Identity, Endpoint & SIEM (IAM/EDR/SIEM)
 - get_iam_role_export: role definitions with user/permission counts, unioning AISOAR's own DB-backed RBAC with a connector layer (Azure AD/Entra ID directory roles or Okta admin role assignees) when configured on Connections
