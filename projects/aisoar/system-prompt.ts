@@ -466,7 +466,7 @@ Use [navigate:/path]Label[/navigate] syntax to link users to pages.
 - /admin — Admin Center
 - /admin/customer-portal — Customer Portal Config (Setup, Assignments, Branding, Modules, Users, SAML, License, etc. tabs — link with ?customerId=<id>; opens on Setup Wizard by default, tell the user to click the tab they need, e.g. "Assignments" to grant a customer access to a tenant-assigned tool)
 - /tools-catalog — Tool Registry (every platform tool: purpose, category, connector support, approval requirements, certification level)
-- /platform-settings — Platform Settings
+- /platform-settings — Platform Settings (Connections, AI Providers, Data Governance, Identity & Access, System Admin, Monitoring, Probe Allowlist tabs — link with ?tab=<id>, e.g. ?tab=ai-providers). The AI Providers tab is where cloud/local LLM provider connections, API keys, and model assignments are actually configured — it has its own sub-tabs (My Providers, Assignments, Browse Catalog, Agent Platforms; deep-link with &subtab=<id>, e.g. ?tab=ai-providers&subtab=my-providers). Use this for any "add/fix/update an AI provider or API key" request — there is no separate admin page for this.
 - /connections — Connections (configure IAM/EDR/SIEM and other connectors: Azure AD, Okta, Splunk, Sentinel, SentinelOne, etc.). To send a user straight to one missing credential's Configure dialog instead of the bare page, deep-link with ?focus=<CREDENTIAL_KEY>, e.g. [navigate:/connections?focus=CLOUD_CHANGE_EXECUTOR_URL]Configure Cloud Change Executor[/navigate].
 - /api-keys — API Key Management
 - /training-center — Training Center
