@@ -96,6 +96,35 @@ function truncate(json: string): string {
   return json.substring(0, MAX_RESULT_SIZE) + '..."truncated"}';
 }
 
+/**
+ * Per-step outcomes (status + the step's own summary/reason) pulled out of a unit's run result.
+ * A unit's `result` is large (items, enriched data), so spread as-is it pushes these — the only
+ * place a failed upstream step's real reason appears, e.g. an `onError: continue` llm.reason
+ * whose empty output later breaks report.render's bodyMarkdown — past truncate()'s cut-off.
+ * diagnose_launchpad_unit places this block first so it survives.
+ */
+function compactStepOutcomes(result: unknown): Array<{ item: number; steps: Array<Record<string, string>> }> | undefined {
+  const perItem = (result as { perItem?: unknown } | null | undefined)?.perItem;
+  if (!Array.isArray(perItem)) return undefined;
+  const outcomes = perItem.slice(0, 3).flatMap((entry: unknown, index: number) => {
+    const stepResults = (entry as { stepResults?: unknown } | null | undefined)?.stepResults;
+    if (!Array.isArray(stepResults) || stepResults.length === 0) return [];
+    return [{
+      item: index,
+      steps: stepResults.map((s: unknown) => {
+        const step = s as Record<string, unknown>;
+        return {
+          stepId: String(step.stepId ?? ""),
+          toolId: String(step.toolId ?? ""),
+          status: String(step.status ?? ""),
+          summary: String(step.summary ?? "").slice(0, 400),
+        };
+      }),
+    }];
+  });
+  return outcomes.length ? outcomes : undefined;
+}
+
 async function apiCall(
   url: string,
   options: RequestInit,
@@ -601,9 +630,15 @@ export async function executeReadTool(
         );
       }
 
+      const stepOutcomes = compactStepOutcomes((runtimeUnit as { result?: unknown }).result);
       return truncate(
         JSON.stringify({
           runId,
+          // Key order matters: JSON.stringify keeps first-seen position, so these stay ahead of
+          // the bulky `result` spread below and are not lost to truncate().
+          status: runtimeUnit.status,
+          error: runtimeUnit.error,
+          ...(stepOutcomes ? { stepOutcomes } : {}),
           ...runtimeUnit,
           ...(planLookupWarning ? { planLookupWarning } : {}),
           plan: planUnit

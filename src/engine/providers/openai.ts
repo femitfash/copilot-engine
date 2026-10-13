@@ -88,21 +88,37 @@ export class OpenAIProvider implements LLMProvider {
       content.push({ type: "text", text: choice.message.content });
     }
 
+    const truncated = choice.finish_reason === "length";
+
     if (choice.message.tool_calls) {
       for (const toolCall of choice.message.tool_calls) {
         if (toolCall.type === "function") {
+          let input: Record<string, unknown>;
+          try {
+            input = JSON.parse(toolCall.function.arguments || "{}");
+          } catch (err) {
+            // A truncated (finish_reason "length") reply can cut the arguments JSON mid-string.
+            // The loop never executes tool calls from a truncated reply, so tolerate it here
+            // instead of failing the whole request; any other malformed JSON still throws.
+            if (!truncated) throw err;
+            input = {};
+          }
           content.push({
             type: "tool_use",
             id: toolCall.id,
             name: toolCall.function.name,
-            input: JSON.parse(toolCall.function.arguments || "{}"),
+            input,
           });
         }
       }
     }
 
     const stopReason =
-      choice.finish_reason === "tool_calls" ? "tool_use" : "end_turn";
+      choice.finish_reason === "tool_calls"
+        ? "tool_use"
+        : truncated
+          ? "max_tokens"
+          : "end_turn";
 
     return { content, stopReason };
   }

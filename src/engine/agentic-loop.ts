@@ -2,7 +2,15 @@ import type { Tool, Message, ToolResult, ToolUseBlock, LLMProvider, LLMConfig } 
 import { getLLMConfig, createProvider } from "./providers";
 import { splitHistoryForSummary, summarizeOlderHistory } from "./history-summarizer";
 
-const MAX_ITERATIONS = 6;
+// A diagnose -> validate -> search registry -> inspect tool -> patch sequence alone uses ~6
+// rounds, so the old cap of 6 cut turns off mid-plan and the user had to type "continue".
+// Kept below the route's 10-minute request timeout.
+const MAX_ITERATIONS = 12;
+
+const ITERATION_CAP_NOTICE =
+  "\n\n_I reached my step limit for one reply before finishing. Say \"continue\" and I'll pick up from here._";
+const MAX_TOKENS_NOTICE =
+  "\n\n_My reply was cut off because it hit the output length limit. Say \"continue\" to resume._";
 const MAX_TOOL_RESULT_CHARS = 8000;
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -95,6 +103,10 @@ export async function runAgenticLoop(
     { role: "user" as const, content: userMessage },
   ];
 
+  // Set on every deliberate exit; if the for-loop runs out instead, the iteration cap was hit
+  // with tool calls still pending and the user must be told (it used to end silently).
+  let finished = false;
+
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     const response = await provider.createMessage({
       model: config.model,
@@ -104,9 +116,13 @@ export async function runAgenticLoop(
       messages,
     });
 
-    // Extract text blocks
+    // Extract text blocks. Text from different iterations is separated by a blank line;
+    // plain concatenation fused sentences ("...simultaneously.Good — I have...").
+    let iterationHasText = false;
     for (const block of response.content) {
-      if (block.type === "text") {
+      if (block.type === "text" && block.text) {
+        if (!iterationHasText && collectedText) collectedText += "\n\n";
+        iterationHasText = true;
         collectedText += block.text;
       }
     }
@@ -117,11 +133,16 @@ export async function runAgenticLoop(
     );
 
     if (response.stopReason === "max_tokens") {
-      // Response was truncated — return what we have
+      // Truncated mid-reply. Any tool_use block may carry cut-off JSON input, so none are
+      // executed — say so instead of ending the turn as if it had completed.
+      console.warn(`[copilot.loop] output truncated (max_tokens) at iteration ${i + 1}/${MAX_ITERATIONS}; ${toolUseBlocks.length} tool call(s) not executed`);
+      collectedText += MAX_TOKENS_NOTICE;
+      finished = true;
       break;
     }
 
     if (toolUseBlocks.length === 0 || response.stopReason !== "tool_use") {
+      finished = true;
       break; // No more tool calls, we're done
     }
 
@@ -184,6 +205,11 @@ export async function runAgenticLoop(
         ...(r.is_error ? { is_error: true } : {}),
       })),
     });
+  }
+
+  if (!finished) {
+    console.warn(`[copilot.loop] iteration cap (${MAX_ITERATIONS}) reached with tool calls still pending`);
+    collectedText += ITERATION_CAP_NOTICE;
   }
 
   return { text: collectedText, pendingActions };
