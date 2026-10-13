@@ -2,7 +2,7 @@
 
 A reusable, LLM-agnostic backend for building AI copilots with agentic tool use, SSE streaming, and action approval workflows. Supports **Anthropic Claude** and **OpenAI GPT** (including gpt-4.1-mini).
 
-**Ships with:** agentic loop (up to 4 LLM iterations), READ/WRITE tool separation, word-by-word SSE streaming, auth middleware, and a pluggable project system — swap the system prompt, tools, and executor to adapt to any domain.
+**Ships with:** agentic loop (up to 12 LLM iterations), READ/WRITE tool separation, word-by-word SSE streaming, auth middleware, and a pluggable project system — swap the system prompt, tools, and executor to adapt to any domain.
 
 > Includes a reference implementation (`projects/zerotrusted/`) showing a production integration with the [ZeroTrusted AI Governance platform](https://zerotrusted.ai) — 14 READ + 10 WRITE tools covering PII detection, compliance, health checks, and more. Use `projects/example/` as a starter template for your own project.
 
@@ -110,7 +110,7 @@ User sends message
   → POST /api/copilot (SSE stream)
     → Auth middleware validates token
       → Build system prompt + context
-        → Agentic loop (up to 4 iterations):
+        → Agentic loop (up to 12 iterations):
            READ tools  → auto-execute, feed result back to Claude
            WRITE tools → queue as pendingActions (NOT executed)
         → Collect final text

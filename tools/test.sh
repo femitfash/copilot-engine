@@ -31,4 +31,8 @@ echo "🔍  Error classifier checks..."
 npx ts-node tools/verify-error-classifier.ts
 
 echo ""
+echo "🔍  Agentic loop checks..."
+npx ts-node tools/verify-agentic-loop.ts
+
+echo ""
 echo "ℹ️   Full test suite: add tests in a /tests directory and run with npm test"

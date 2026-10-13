@@ -33,6 +33,13 @@ export function createCopilotRoute(project: ProjectConfig): Router {
       sendError(res, "Request timed out");
     }, 600_000);
 
+    // Nothing else is written until the whole agentic loop finishes. With a higher iteration cap
+    // that can exceed a reverse proxy's idle timeout (nginx ingress defaults to 60s), so send an
+    // SSE comment periodically. Clients ignore lines that don't start with "data: ".
+    const keepAlive = setInterval(() => {
+      if (!res.writableEnded) res.write(": keep-alive\n\n");
+    }, 15_000);
+
     let llmConfig: LLMConfig | undefined;
 
     try {
@@ -102,6 +109,7 @@ export function createCopilotRoute(project: ProjectConfig): Router {
       sendError(res, userMessage, actionable ? `llm_${classified.code}` : undefined);
     } finally {
       clearTimeout(timeout);
+      clearInterval(keepAlive);
       clearProgress(req.body?.conversationId);
     }
   });

@@ -15,7 +15,7 @@ routes/copilot.ts
     │  Builds enriched system prompt (caps context at 2000 chars)
     │
     ▼
-src/engine/agentic-loop.ts  ──── up to 4 iterations ────┐
+src/engine/agentic-loop.ts  ──── up to 12 iterations ───┐
     │                                                      │
     │  Call LLM via provider adapter                       │
     │  (Anthropic or OpenAI — set via LLM_PROVIDER)       │
@@ -87,7 +87,7 @@ To add a new project:
 - **Token forwarding** — the user's auth token/cookie is forwarded to every API call in the tool executor
 - **LLM-agnostic** — provider abstraction layer supports Anthropic and OpenAI; swap with one env var
 - **Result truncation** — all tool results are capped at 8000 chars to prevent LLM token overflow
-- **Max 4 agentic iterations** — prevents runaway loops; sufficient for multi-hop tool chaining
+- **Max 12 agentic iterations** — prevents runaway loops; a diagnose → validate → search → patch chain alone uses ~6. Hitting the cap (or a `max_tokens` truncation) appends a visible notice instead of ending silently
 
 ## Environment Variables
 
