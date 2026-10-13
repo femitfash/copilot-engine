@@ -42,7 +42,7 @@ const COPILOT_AGENT_NAME = "Copilot Chat Assistant";
 export const COPILOT_GOVERNED_WRITE_TOOL_IDS = [
   "sast.run", "dast.run", "report.generate", "report.render",
   "iam.export.roles", "iam.session.revoke", "iam.mfa.audit", "iam.privilege.audit",
-  "edr.isolate.host", "siem.query", "notification.email.send",
+  "edr.isolate.host", "siem.query", "notification.email.send", "dynamic_tool.create",
 ];
 
 function buildGovernedCtx(ctx: ToolExecutionContext, toolName: string): Record<string, unknown> {
@@ -262,6 +262,14 @@ export async function executeReadTool(
     case "get_threat_intel": {
       return apiCall(
         `${base}/api/threat-intel/watchlist-stats`,
+        { method: "GET" },
+        cookies
+      );
+    }
+
+    case "get_running_jobs": {
+      return apiCall(
+        `${base}/api/admin/kill-switch/running`,
         { method: "GET" },
         cookies
       );
@@ -1317,6 +1325,20 @@ export async function executeWriteTool(
         `${base}/api/launchpad/dynamic-tools/${dynamicToolId}/test`,
         { method: "POST" },
         cookies
+      );
+    }
+
+    case "create_dynamic_tool": {
+      const executeGovernedTool = requireGovernedExecutor(ctx);
+      return executeGovernedTool(
+        "dynamic_tool.create",
+        {
+          capabilityDescription: input.capabilityDescription,
+          unitContext: input.unitContext,
+          sourceProjectId: input.sourceProjectId,
+          sourceUnitId: input.sourceUnitId,
+        },
+        buildGovernedCtx(ctx, toolName)
       );
     }
 

@@ -105,6 +105,16 @@ export const READ_TOOLS: Tool[] = [
     },
   },
   {
+    name: "get_running_jobs",
+    description:
+      "Get a count and list of currently running scans, tool jobs, SWARM runs, pentests, AI-evaluation-harness runs, and agent missions under the active profile — use this to answer questions like 'what's running right now' or 'how many scans are active'. Does not stop anything; the kill switch itself is a UI-only control, not exposed as a chat action, so never claim you can stop or cancel a job on the user's behalf.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "get_threat_intel",
     description:
       "Get threat intelligence watchlist statistics and recent findings",
@@ -1471,6 +1481,28 @@ export const WRITE_TOOLS: Tool[] = [
         dynamicToolId: { type: "string", description: "The dynamic tool's row id, from list_active_dynamic_tools or get_launchpad_dynamic_tools" },
       },
       required: ["dynamicToolId"],
+    },
+  },
+  {
+    name: "create_dynamic_tool",
+    description:
+      "Directly author a new LaunchPad capability (a recipe over existing tools, or a config-driven " +
+      "connector request — never generated code) for a capability the platform doesn't have yet, outside " +
+      "of accept_workflow_rule's own automatic attempt. Use this when the user asks to (re)try authoring " +
+      "a capability by itself, or wants a standalone capability without going through a full workflow-rule " +
+      "accept. Reuses an existing equivalent capability automatically instead of authoring a duplicate. " +
+      "Requires human approval. IMPORTANT: authoring here does NOT wire the new tool into a specific unit's " +
+      "plan — after success, tell the user to re-run accept_workflow_rule for that unit so the platform " +
+      "grants and wires the new capability in.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        capabilityDescription: { type: "string", description: "Plain-language description of the missing capability" },
+        unitContext: { type: "string", description: "Optional: what work unit/step needs this" },
+        sourceProjectId: { type: "string", description: "Optional: LaunchPad project ID" },
+        sourceUnitId: { type: "string", description: "Optional: the work unit ID" },
+      },
+      required: ["capabilityDescription"],
     },
   },
 ];
