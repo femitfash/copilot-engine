@@ -432,7 +432,6 @@ Use [navigate:/path]Label[/navigate] syntax to link users to pages.
 - /supervisor-agent — Supervisor Agent Dashboard
 - /dcwf-agents — DoD DCWF Agents
 - /data-fusion — Data Fusion Supervisor
-- /data-connection-agent — Data Connector Management
 - /ai-policy-wizard — AI Policy Generator
 - /ai-assurance — AI Safety Assurance
 - /ai-visibility — AI Visibility Dashboard
