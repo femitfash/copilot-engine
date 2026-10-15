@@ -90,10 +90,56 @@ const SECTOR_REPORT_TEMPLATES: Record<
 };
 
 const MAX_RESULT_SIZE = 8000; // Truncate to prevent token overflow
+// Reserve room for the naive-fallback suffix below so its own output is guaranteed <= MAX_RESULT_SIZE —
+// otherwise agentic-loop.ts's own MAX_TOOL_RESULT_CHARS cap re-truncates on top of this one, cutting the
+// suffix off mid-string instead of leaving it as a clean, single truncation point.
+const TRUNCATE_SUFFIX = '..."truncated"}';
+const MAX_LEAF_STRING_SIZE = 600; // Cap any single string value when a payload needs shrinking
+const MAX_ARRAY_ITEMS = 30;
+
+/**
+ * Recursively caps oversized string leaves (base64 blobs, rendered HTML, etc.) and long arrays,
+ * instead of leaving them to be cut off by a raw end-of-string substring. A naive substring over
+ * the final serialized JSON can both (a) produce invalid/unparseable JSON mid-object, and (b) if a
+ * large field (e.g. report.render's embedded `pdfBase64`/`html`) happens to serialize before a
+ * small-but-essential one (e.g. diagnose_launchpad_unit's `plan.steps`), silently drop the small
+ * field entirely even though the real diagnostic signal would easily have fit in budget.
+ */
+function shrinkLargeValues(value: unknown, depth = 0): unknown {
+  if (depth > 8) return value;
+  if (typeof value === "string") {
+    return value.length > MAX_LEAF_STRING_SIZE
+      ? `${value.slice(0, MAX_LEAF_STRING_SIZE)}... [truncated, ${value.length} chars total]`
+      : value;
+  }
+  if (Array.isArray(value)) {
+    const shrunk = value.slice(0, MAX_ARRAY_ITEMS).map((item) => shrinkLargeValues(item, depth + 1));
+    if (value.length > MAX_ARRAY_ITEMS) {
+      shrunk.push(`... [${value.length - MAX_ARRAY_ITEMS} more items omitted]`);
+    }
+    return shrunk;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, shrinkLargeValues(v, depth + 1)])
+    );
+  }
+  return value;
+}
 
 function truncate(json: string): string {
   if (json.length <= MAX_RESULT_SIZE) return json;
-  return json.substring(0, MAX_RESULT_SIZE) + '..."truncated"}';
+  try {
+    const shrunk = JSON.stringify(shrinkLargeValues(JSON.parse(json)));
+    if (shrunk.length <= MAX_RESULT_SIZE) return shrunk;
+    // Still too large (e.g. very many small fields/items) — fall back to a hard cut, but at
+    // least on the already-shrunk payload so as little real signal as possible is lost.
+    return shrunk.substring(0, MAX_RESULT_SIZE - TRUNCATE_SUFFIX.length) + TRUNCATE_SUFFIX;
+  } catch {
+    // Not valid JSON (every call site passes JSON.stringify output, so this shouldn't happen) —
+    // fall back to the previous naive behavior rather than fail the tool call outright.
+    return json.substring(0, MAX_RESULT_SIZE - TRUNCATE_SUFFIX.length) + TRUNCATE_SUFFIX;
+  }
 }
 
 async function apiCall(
