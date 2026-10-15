@@ -1170,6 +1170,7 @@ export const WRITE_TOOLS: Tool[] = [
     name: "run_workflow_rule",
     description:
       "Run a previously accepted Workflow Rule for a LaunchPad project. Creates one tracked task per work unit and dispatches each step's tool. " +
+      "This STARTS the run and returns immediately with the runId and queued tasks - it does not wait for the run to finish, so the response says nothing about whether any unit succeeded. Poll get_workflow_rule_run_status with that runId and report results only from it. A 409 workflow_rule_run_in_progress means that run is still executing; wait rather than retrying. " +
       "The project must have an accepted plan first (see accept_workflow_rule). " +
       "Also the correct tool to retry after fixing a unit (via dismiss_launchpad_capability_gap, reassign_launchpad_unit_agent, or patch_launchpad_unit_plan) — it always reruns every unit in the plan, not just the one you repaired, since there is no unit-scoped rerun. Say so plainly if the user expects only the fixed unit to run.",
     input_schema: {
