@@ -1,4 +1,9 @@
 import type { Tool } from "../../src/engine/llm-types";
+import { CONNECTOR_READ_TOOLS, CONNECTOR_WRITE_TOOLS } from "./connector-tools";
+
+// Re-exported so AISOAR's parity test can read the connector tool tables through the package's
+// existing "./projects/aisoar/tools" entry point.
+export { CONNECTOR_READ_TOOL_MAP, CONNECTOR_WRITE_TOOL_MAP, CONNECTOR_GOVERNED_TOOL_IDS } from "./connector-tools";
 
 // ─── READ Tools (auto-execute in agentic loop) ─────────────────────────────
 
@@ -707,6 +712,8 @@ export const READ_TOOLS: Tool[] = [
       required: [],
     },
   },
+  // ServiceNow / Splunk / SAINT / CrowdStrike / Tenable / AWS (connector-tools.ts)
+  ...CONNECTOR_READ_TOOLS,
 ];
 
 // ─── WRITE Tools (queued for user approval) ─────────────────────────────────
@@ -1506,6 +1513,9 @@ export const WRITE_TOOLS: Tool[] = [
       required: ["capabilityDescription"],
     },
   },
+  // Approval-gated connector writes (connector-tools.ts). Deliberately NOT in SAFE_WRITE_TOOL_NAMES:
+  // they stay behind COPILOT_WRITE_TOOLS_ENABLED like every other WRITE tool.
+  ...CONNECTOR_WRITE_TOOLS,
 ];
 
 // ─── Exports ────────────────────────────────────────────────────────────────
