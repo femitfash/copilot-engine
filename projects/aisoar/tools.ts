@@ -1,4 +1,9 @@
 import type { Tool } from "../../src/engine/llm-types";
+import { CONNECTOR_READ_TOOLS, CONNECTOR_WRITE_TOOLS } from "./connector-tools";
+
+// Re-exported so AISOAR's parity test can read the connector tool tables through the package's
+// existing "./projects/aisoar/tools" entry point.
+export { CONNECTOR_READ_TOOL_MAP, CONNECTOR_WRITE_TOOL_MAP, CONNECTOR_GOVERNED_TOOL_IDS } from "./connector-tools";
 
 // ─── READ Tools (auto-execute in agentic loop) ─────────────────────────────
 
@@ -707,6 +712,8 @@ export const READ_TOOLS: Tool[] = [
       required: [],
     },
   },
+  // ServiceNow / Splunk / SAINT / CrowdStrike / Tenable / AWS (connector-tools.ts)
+  ...CONNECTOR_READ_TOOLS,
 ];
 
 // ─── WRITE Tools (queued for user approval) ─────────────────────────────────
@@ -1170,6 +1177,7 @@ export const WRITE_TOOLS: Tool[] = [
     name: "run_workflow_rule",
     description:
       "Run a previously accepted Workflow Rule for a LaunchPad project. Creates one tracked task per work unit and dispatches each step's tool. " +
+      "This STARTS the run and returns immediately with the runId and queued tasks - it does not wait for the run to finish, so the response says nothing about whether any unit succeeded. Poll get_workflow_rule_run_status with that runId and report results only from it. A 409 workflow_rule_run_in_progress means that run is still executing; wait rather than retrying. " +
       "The project must have an accepted plan first (see accept_workflow_rule). " +
       "Also the correct tool to retry after fixing a unit (via dismiss_launchpad_capability_gap, reassign_launchpad_unit_agent, or patch_launchpad_unit_plan) — it always reruns every unit in the plan, not just the one you repaired, since there is no unit-scoped rerun. Say so plainly if the user expects only the fixed unit to run.",
     input_schema: {
@@ -1417,6 +1425,7 @@ export const WRITE_TOOLS: Tool[] = [
         testType: { type: "string", description: "Canonical test/sweep type, e.g. 'crowdstrike_rfm_sweep'" },
         frequency: { type: "string", description: "Cadence label, e.g. 'daily', 'weekly', 'hourly'" },
         cronExpression: { type: "string", description: "Optional cron expression for precise scheduling" },
+        timezone: { type: "string", description: "Optional IANA timezone the cronExpression is evaluated in (e.g. 'America/New_York' for 'every Wednesday 1:20pm Eastern' = cronExpression '20 13 * * 3'). Requires cronExpression; omit to use server-local time. DST is handled automatically." },
         scope: { type: "string", description: "Optional scope description, e.g. asset group or target set" },
         notes: { type: "string", description: "Optional notes about this schedule" },
         tags: { type: "array", items: { type: "string" }, description: "Optional tags" },
@@ -1505,6 +1514,9 @@ export const WRITE_TOOLS: Tool[] = [
       required: ["capabilityDescription"],
     },
   },
+  // Approval-gated connector writes (connector-tools.ts). Deliberately NOT in SAFE_WRITE_TOOL_NAMES:
+  // they stay behind COPILOT_WRITE_TOOLS_ENABLED like every other WRITE tool.
+  ...CONNECTOR_WRITE_TOOLS,
 ];
 
 // ─── Exports ────────────────────────────────────────────────────────────────

@@ -1,4 +1,10 @@
 import { COPILOT_WRITE_TOOLS_ENABLED, SAFE_WRITE_TOOL_NAMES } from "./tools";
+import {
+  CONNECTOR_GOVERNED_TOOL_IDS,
+  CONNECTOR_READ_TOOL_MAP,
+  CONNECTOR_WRITE_TOOL_MAP,
+  pickGovernedParams,
+} from "./connector-tools";
 
 export interface ToolExecutionContext {
   /** Raw `Cookie` header, forwarded for READ-tool HTTP calls only. */
@@ -43,6 +49,11 @@ export const COPILOT_GOVERNED_WRITE_TOOL_IDS = [
   "sast.run", "dast.run", "report.generate", "report.render",
   "iam.export.roles", "iam.session.revoke", "iam.mfa.audit", "iam.privilege.audit",
   "edr.isolate.host", "siem.query", "notification.email.send", "dynamic_tool.create",
+  // get_crowdstrike_itdr_privileged_accounts has long called this governed tool, but the id was
+  // never in this envelope, so requireAutonomy denied it (tool_not_in_capability_envelope).
+  "crowdstrike.itdr.privilegedAccounts.export",
+  // ServiceNow / Splunk / SAINT / CrowdStrike / Tenable / AWS tools (connector-tools.ts).
+  ...CONNECTOR_GOVERNED_TOOL_IDS,
 ];
 
 function buildGovernedCtx(ctx: ToolExecutionContext, toolName: string): Record<string, unknown> {
@@ -877,8 +888,17 @@ export async function executeReadTool(
       return truncate(JSON.stringify(result));
     }
 
-    default:
+    default: {
+      // Connector tools (connector-tools.ts): one data-driven path through the governed executor.
+      // Only allowlisted arguments are forwarded; identity comes from the governed context.
+      const mapped = CONNECTOR_READ_TOOL_MAP[toolName];
+      if (mapped) {
+        const executeGovernedTool = requireGovernedExecutor(ctx);
+        const result = await executeGovernedTool(mapped.toolId, pickGovernedParams(input, mapped.params), buildGovernedCtx(ctx, toolName));
+        return truncate(JSON.stringify(result));
+      }
       return JSON.stringify({ error: `Unknown tool: ${toolName}` });
+    }
   }
 }
 
@@ -1388,7 +1408,15 @@ export async function executeWriteTool(
       );
     }
 
-    default:
+    default: {
+      // Approval-gated connector writes (connector-tools.ts). Already behind the global
+      // COPILOT_WRITE_TOOLS_ENABLED guard at the top of this function.
+      const mapped = CONNECTOR_WRITE_TOOL_MAP[toolName];
+      if (mapped) {
+        const executeGovernedTool = requireGovernedExecutor(ctx);
+        return executeGovernedTool(mapped.toolId, pickGovernedParams(input, mapped.params), buildGovernedCtx(ctx, toolName));
+      }
       throw new Error(`Unknown write tool: ${toolName}`);
+    }
   }
 }
