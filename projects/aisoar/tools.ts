@@ -1425,6 +1425,7 @@ export const WRITE_TOOLS: Tool[] = [
         testType: { type: "string", description: "Canonical test/sweep type, e.g. 'crowdstrike_rfm_sweep'" },
         frequency: { type: "string", description: "Cadence label, e.g. 'daily', 'weekly', 'hourly'" },
         cronExpression: { type: "string", description: "Optional cron expression for precise scheduling" },
+        timezone: { type: "string", description: "Optional IANA timezone the cronExpression is evaluated in (e.g. 'America/New_York' for 'every Wednesday 1:20pm Eastern' = cronExpression '20 13 * * 3'). Requires cronExpression; omit to use server-local time. DST is handled automatically." },
         scope: { type: "string", description: "Optional scope description, e.g. asset group or target set" },
         notes: { type: "string", description: "Optional notes about this schedule" },
         tags: { type: "array", items: { type: "string" }, description: "Optional tags" },
